@@ -4,6 +4,7 @@ local nativefs = {}
 ffi.cdef([[
 	int PHYSFS_mount(const char* dir, const char* mountPoint, int appendToPath);
 	int PHYSFS_unmount(const char* dir);
+	const char* PHYSFS_getMountPoint(const char* dir);
 
 	typedef struct FILE FILE;
 
@@ -355,6 +356,11 @@ function nativefs.load(name)
 end
 
 function nativefs.getDirectoryItems(dir, callback)
+	local mountPoint = loveC.PHYSFS_getMountPoint(dir)
+	if mountPoint ~= nil then
+		return love.filesystem.getDirectoryItems(ffi.string(mountPoint), callback)
+	end
+
 	if not nativefs.mount(dir, '__nativefs__temp__') then
 		return false, "Could not mount " .. dir
 	end
