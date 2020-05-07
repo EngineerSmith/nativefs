@@ -2,6 +2,9 @@ local ffi, bit = require('ffi'), require('bit')
 local nativefs = {}
 
 ffi.cdef([[
+	int PHYSFS_mount(const char* dir, const char* mountPoint, int appendToPath);
+	int PHYSFS_unmount(const char* dir);
+
 	typedef struct FILE FILE;
 
 	FILE* fopen(const char* pathname, const char* mode);
@@ -19,6 +22,7 @@ local C = ffi.C
 local fclose, ftell, fseek, fflush, feof = C.fclose, C.ftell, C.fseek, C.fflush
 local fread, fwrite, feof, setvbuf = C.fread, C.fwrite, C.feof, C.setvbuf
 local fopen, getcwd, chdir, unlink -- system specific
+local loveC = ffi.os == 'Windows' and ffi.load('love') or C
 
 local BUFFERMODE = {
 	full = 0,
@@ -43,14 +47,13 @@ if ffi.os == 'Windows' then
 		};
 		#pragma(pop)
 
-		int MultiByteToWideChar(unsigned int CodePage, uint32_t dwFlags, const char* lpMultiByteStr, int cbMultiByte, const wchar_t* lpWideCharStr, int cchWideChar);
-		int WideCharToMultiByte(unsigned int CodePage, uint32_t dwFlags, const wchar_t* lpWideCharStr, int cchWideChar, const char* lpMultiByteStr, int cchMultiByte, const char* default, int* used);
-
+		int MultiByteToWideChar(unsigned int cp, uint32_t flags, const char* mb, int cmb, const wchar_t* wc, int cwc);
+		int WideCharToMultiByte(unsigned int cp, uint32_t flags, const wchar_t* wc, int cwc, const char* mb,
+		                        int cmb, const char* def, int* used);
 		int GetLogicalDrives(void);
 		void* FindFirstFileW(const wchar_t* lpFileName, struct WIN32_FIND_DATAW* lpFindFileData);
 		bool FindNextFileW(HANDLE hFindFile, struct WIN32_FIND_DATAW* fd);
 		bool FindClose(HANDLE hFindFile);
-
 		int _wchdir(const wchar_t* path);
 		wchar_t* _wgetcwd(wchar_t* buffer, int maxlen);
 		FILE* _wfopen(const wchar_t* name, const wchar_t* mode);
@@ -284,10 +287,12 @@ function nativefs.newFileData(filepath)
 	return love.filesystem.newFileData(data, filepath)
 end
 
-function nativefs.mount()
+function nativefs.mount(archive, mountPoint, appendToPath)
+	return loveC.PHYSFS_mount(archive, mountPoint, appendToPath and 1 or 0) ~= 0
 end
 
-function nativefs.unmount()
+function nativefs.unmount(archive)
+	return loveC.PHYSFS_unmount(archive) ~= 0
 end
 
 function nativefs.read(containerOrName, nameOrSize, sizeOrNil)
@@ -345,13 +350,17 @@ end
 
 function nativefs.load(name)
 	local chunk, err = nativefs.read(name)
-	if not chunk then
-		return nil, err
-	end
+	if not chunk then return nil, err end
 	return loadstring(chunk, name)
 end
 
 function nativefs.getDirectoryItems(dir, callback)
+	if not nativefs.mount(dir, '__nativefs__temp__') then
+		return false, "Could not mount " .. dir
+	end
+	local items = love.filesystem.getDirectoryItems('__nativefs__temp__', callback)
+	nativefs.unmount(dir)
+	return items
 end
 
 function nativefs.getWorkingDirectory()

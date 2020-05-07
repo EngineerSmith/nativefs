@@ -3,8 +3,8 @@ package.path = package.path .. ';../?.lua'
 
 local ffi = require('ffi')
 local lu = require('luaunit')
-local fs = require('nativefs')
 local lfs = love.filesystem
+local fs
 
 local equals, notEquals = lu.assertEquals, lu.assertNotEquals
 local isError, containsError = lu.assertErrorMsgEquals, lu.assertErrorMsgContains
@@ -40,6 +40,11 @@ function test_fs_newFileData()
 end
 
 function test_fs_mount()
+	equals(fs.mount('data', 'test_data'), true)
+	local data, size = love.filesystem.read('test_data/ümläüt.txt')
+	notEquals(data, nil)
+	notEquals(size, nil)
+	equals(fs.unmount('data'), true)
 end
 
 function test_fs_read()
@@ -102,6 +107,12 @@ function test_fs_load()
 end
 
 function test_fs_getDirectoryItems()
+	local items = fs.getDirectoryItems('data')
+
+	local map = {}
+	for i = 1, #items do map[items[i]] = true end
+	equals(map['ümläüt.txt'], true)
+	equals(map['test.lua'], true)
 end
 
 function test_fs_setWorkingDirectory()
@@ -196,6 +207,17 @@ end
 
 function test_File_flush()
 end
+
+function test_xxx_globalsCheck()
+	for k, v in pairs(_G) do
+		equals(v, _globals[k])
+	end
+end
+
+_globals = {}
+for k, v in pairs(_G) do _globals[k] = v end
+
+fs = require('nativefs')
 
 lu.LuaUnit.new():runSuite('--verbose')
 love.event.quit()
