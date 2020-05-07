@@ -58,6 +58,8 @@ function test_fs_read()
 
 	local data, size = fs.read('data', 'data/ümläüt.txt', 'all')
 	equals(size, textSize)
+	equals(data:type(), 'FileData')
+	equals(data:getSize(), size)
 	equals(data:getString(), text)
 
 	local foo, bar = fs.read('does_not_exist')
@@ -141,16 +143,13 @@ end
 
 -----------------------------------------------------------------------------
 
-function test_File()
-end
-
 function test_File_open()
 	local f = fs.newFile('data/ümläüt.txt')
 	notEquals(f, nil)
 	equals(f:isOpen(), false)
 	equals(f:getMode(), 'c')
 
-	notFailed(f:open())
+	notFailed(f:open('r'))
 	equals(f:isOpen(), true)
 	equals(f:getMode(), 'r')
 
@@ -171,6 +170,13 @@ function test_File_setBuffer()
 end
 
 function test_File_isEOF()
+	local f = love.filesystem.newFile('data/ümläüt.txt')
+	f:open('r')
+	f:read(f:getSize() - 1)
+	equals(f:isEOF(), false)
+
+	f:read(1)
+	equals(f:isEOF(), true)
 end
 
 function test_File_read()

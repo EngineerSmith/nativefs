@@ -1,5 +1,5 @@
 local ffi, bit = require('ffi'), require('bit')
-local C = ffi.C
+local nativefs = {}
 
 ffi.cdef([[
 	typedef struct FILE FILE;
@@ -15,15 +15,15 @@ ffi.cdef([[
 	int feof(FILE* stream);
 ]])
 
-local fopen, fclose, ftell, fseek, fflush, feof = C.fopen, C.fclose, C.ftell, C.fseek, C.fflush
-local fread, fwrite, feof = C.fread, C.fwrite, C.feof
-local setvbuf = C.setvbuf
-local getcwd, chdir, unlink
+local C = ffi.C
+local fclose, ftell, fseek, fflush, feof = C.fclose, C.ftell, C.fseek, C.fflush
+local fread, fwrite, feof, setvbuf = C.fread, C.fwrite, C.feof, C.setvbuf
+local fopen, getcwd, chdir, unlink -- system specific
 
 local BUFFERMODE = {
-	full = ffi.os == 'Windows' and 0  or 0,
-	line = ffi.os == 'Windows' and 64 or 1,
-	none = ffi.os == 'Windows' and 4  or 2,
+	full = 0,
+	line = 1,
+	none = 2,
 }
 
 if ffi.os == 'Windows' then
@@ -57,10 +57,12 @@ if ffi.os == 'Windows' then
 		int _wunlink(const wchar_t* name);
 	]])
 
+	BUFFERMODE.line, BUFFERMODE.none = 64, 4
+
 	local function towidestring(str)
 		local size = C.MultiByteToWideChar(65001, 0, str, #str, nil, 0)
 		local buf = ffi.new("wchar_t[?]", size + 1)
-		C.MultiByteToWideChar(65001, 0, str, #str, buf, size + 1)
+		C.MultiByteToWideChar(65001, 0, str, #str, buf, size)
 		return buf
 	end
 
@@ -88,13 +90,10 @@ else
 	local MAX_PATH = 4096
 	local nameBuffer = ffi.new("char[?]", MAX_PATH)
 
-	unlink, chdir = C.unlink, C.chdir
+	fopen, unlink, chdir = C.fopen, C.unlink, C.chdir
 	getcwd = function()
 		local cwd = C.getcwd(nameBuffer, MAX_PATH)
-		if cwd == nil then
-			return nil
-		end
-		return ffi.string(cwd)
+		return cwd and ffi.string(cwd) or nil
 	end
 end
 
@@ -106,14 +105,14 @@ local File = {}
 File.__index = File
 
 function File:open(mode)
-	if self._mode ~= 'c' then
-		return false, "File is already open"
+	if self._mode ~= 'c' then return false, "File is already open" end
+
+	if mode ~= 'r' and mode ~= 'w' and mode ~= 'a' then
+		return false, "Invalid file open mode: " .. mode
 	end
 
-	mode = mode or 'r'
 	local handle = fopen(self._name, mode .. 'b')
 	if handle == nil then
-		-- TODO: get error message
 		return false, "Could not open " .. self._name .. " in mode " .. mode
 	end
 
@@ -146,12 +145,7 @@ function File:setBuffer(mode, size)
 	self._bufferMode, self._bufferSize = mode, size
 	if self._mode == 'c' then return true end
 
-	if C.setvbuf(self._handle, nil, bufferMode, size) ~= 0 then
-		-- TODO: get error message
-		return false
-	end
-
-	return true
+	return C.setvbuf(self._handle, nil, bufferMode, size) == 0
 end
 
 function File:getBuffer()
@@ -187,7 +181,7 @@ function File:getSize()
 end
 
 function File:isEOF()
-	return self:isOpen() and feof(self._handle) or false
+	return not self:isOpen() or feof(self._handle) ~= 0
 end
 
 function File:isOpen()
@@ -200,15 +194,11 @@ function File:read(containerOrBytes, bytes)
 	end
 
 	local container = bytes ~= nil and containerOrBytes or 'string'
-	bytes = bytes == nil and containerOrBytes or 'all'
-	if bytes == 'all' then
-		bytes = self:getSize() - self:tell()
-	else
-		bytes = math.min(self:getSize() - self:tell(), bytes)
-	end
+	bytes = not bytes and containerOrBytes or 'all'
+	bytes = bytes == 'all' and self:getSize() - self:tell() or math.min(self:getSize() - self:tell(), bytes)
 
 	if bytes <= 0 then
-		local data = container == 'string' and '' or love.data.newByteData(0)
+		local data = container == 'string' and '' or love.data.newFileData('', self._name)
 		return data, 0
 	end
 
@@ -219,6 +209,10 @@ function File:read(containerOrBytes, bytes)
 		local str = data:getString()
 		data:release()
 		data = str
+	else
+		local fd = love.filesystem.newFileData(data:getString(), self._name)
+		data:release()
+		data = fd
 	end
 	return data, r
 end
@@ -269,8 +263,6 @@ function File:release()
 end
 
 -----------------------------------------------------------------------------
-
-local nativefs = {}
 
 function nativefs.newFile(name)
 	return setmetatable({
