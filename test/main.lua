@@ -1,0 +1,195 @@
+io.stdout:setvbuf('no')
+package.path = package.path .. ';../?.lua'
+
+local ffi = require('ffi')
+local lu = require('luaunit')
+local fs = require('nativefs')
+local lfs = love.filesystem
+
+local equals, notEquals = lu.assertEquals, lu.assertNotEquals
+local isError, containsError = lu.assertErrorMsgEquals, lu.assertErrorMsgContains
+local contains = lu.assertStrContains
+
+local function notFailed(ok, err)
+	equals(ok, true)
+	equals(err, nil)
+end
+
+local function hasFailed(expected, ok, err)
+	equals(ok, false)
+	if expected then
+		equals(err, expected)
+	end
+end
+
+-----------------------------------------------------------------------------
+
+function test_fs_newFile()
+	local file = fs.newFile('test.file')
+	notEquals(file, nil)
+	equals(file:getFilename(), 'test.file')
+end
+
+function test_fs_newFileData()
+	local fd = fs.newFileData('data/ümläüt.txt')
+	local filesize = love.filesystem.newFile('data/ümläüt.txt'):getSize()
+	equals(fd:getSize(), filesize)
+
+	local d = love.filesystem.read('data/ümläüt.txt')
+	equals(fd:getString(), d)
+end
+
+function test_fs_mount()
+end
+
+function test_fs_read()
+	local text, textSize = love.filesystem.read('data/ümläüt.txt')
+	local data, size = fs.read('data/ümläüt.txt')
+	equals(size, textSize)
+	equals(data, text)
+
+	local data, size = fs.read('data/ümläüt.txt', 'all')
+	equals(size, textSize)
+	equals(data, text)
+
+	local data, size = fs.read('string', 'data/ümläüt.txt')
+	equals(size, textSize)
+	equals(data, text)
+
+	local data, size = fs.read('data', 'data/ümläüt.txt', 'all')
+	equals(size, textSize)
+	equals(data:getString(), text)
+
+	local foo, bar = fs.read('does_not_exist')
+	equals(foo, nil)
+	contains(bar, "Could not open")
+end
+
+function test_fs_write()
+	local data, size = fs.read('data/ümläüt.txt')
+	notFailed(fs.write('data/write.test', data))
+
+	local data2, size2 = love.filesystem.read('data', 'data/write.test')
+	notFailed(fs.write('data/write.test', data2, 100))
+	local file = fs.newFile('data/write.test')
+	equals(file:getSize(), 100)
+
+	fs.remove('data/write.test')
+end
+
+function test_fs_append()
+	local text, textSize = love.filesystem.read('data/ümläüt.txt')
+	fs.write('data/append.test', text)
+	fs.append('data/append.test', text)
+
+	local text2, textSize2 = love.filesystem.read('data/append.test')
+	equals(textSize2, textSize * 2)
+	equals(text2, text .. text)
+
+	fs.remove('data/append.test')
+end
+
+function test_fs_lines()
+end
+
+function test_fs_load()
+	local chunk, err = fs.load('data/test.lua')
+	notEquals(chunk, nil)
+	local result = chunk()
+	equals(result, 'hello')
+end
+
+function test_fs_getDirectoryItems()
+end
+
+function test_fs_setWorkingDirectory()
+	local wd = fs.getWorkingDirectory()
+
+	notFailed(fs.setWorkingDirectory('data'))
+
+	local cwd = fs.getWorkingDirectory()
+	notEquals(cwd, nil)
+	equals(cwd:sub(#cwd - 3, #cwd), 'data')
+
+	hasFailed('Could not set working directory', fs.setWorkingDirectory('does_not_exist'))
+
+	notFailed(fs.setWorkingDirectory('..'))
+	equals(fs.getWorkingDirectory(), wd)
+end
+
+function test_fs_getDriveList()
+	local dl = fs.getDriveList()
+	notEquals(dl, nil)
+	notEquals(#dl, 0)
+	if ffi.os ~= 'Windows' then
+		equals(dl[1], '/')
+	end
+end
+
+function test_fs_getInfo()
+end
+
+function test_fs_createDirectory()
+end
+
+function test_fs_remove()
+	local text = love.filesystem.read('data/ümläüt.txt')
+	fs.write('data/remove.test', text)
+	notFailed(fs.remove('data/remove.test'))
+	equals(love.filesystem.getInfo('data/remove.test'), nil)
+end
+
+-----------------------------------------------------------------------------
+
+function test_File()
+end
+
+function test_File_open()
+	local f = fs.newFile('data/ümläüt.txt')
+	notEquals(f, nil)
+	equals(f:isOpen(), false)
+	equals(f:getMode(), 'c')
+
+	notFailed(f:open())
+	equals(f:isOpen(), true)
+	equals(f:getMode(), 'r')
+
+	hasFailed('File is already open', f:open())
+	equals(f:getMode(), 'r')
+
+	notFailed(f:close())
+	equals(f:isOpen(), false)
+	equals(f:getMode(), 'c')
+
+	hasFailed('File is not open', f:close())
+	equals(f:getMode(), 'c')
+
+	f:release()
+end
+
+function test_File_setBuffer()
+end
+
+function test_File_isEOF()
+end
+
+function test_File_read()
+end
+
+function test_File_lines()
+end
+
+function test_File_write()
+end
+
+function test_File_seek()
+end
+
+function test_File_tell()
+end
+
+function test_File_flush()
+end
+
+lu.LuaUnit.new():runSuite('--verbose')
+love.event.quit()
