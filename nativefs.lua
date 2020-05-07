@@ -11,21 +11,19 @@ ffi.cdef([[
 	int fflush(FILE* stream);
 	size_t fseek(FILE* stream, size_t offset, int whence);
 	size_t ftell(FILE* stream);
-	char* getcwd(char *buffer, int maxlen);
-	int chdir(const char* path);
 	int setvbuf(FILE* stream, char* buffer, int mode, size_t size);
 	int feof(FILE* stream);
-	int unlink(const char* path);
 ]])
 
 local fopen, fclose, ftell, fseek, fflush, feof = C.fopen, C.fclose, C.ftell, C.fseek, C.fflush
 local fread, fwrite, feof = C.fread, C.fwrite, C.feof
-local setvbuf, getcwd, chdir, unlink = C.setvbuf, C.getcwd, C.chdir, C.unlink
+local setvbuf = C.setvbuf
+local getcwd, chdir, unlink
 
 local BUFFERMODE = {
-	full = 0,
-	line = 1,
-	none = 2,
+	full = ffi.os == 'Windows' and 0  or 0,
+	line = ffi.os == 'Windows' and 64 or 1,
+	none = ffi.os == 'Windows' and 4  or 2,
 }
 
 if ffi.os == 'Windows' then
@@ -45,8 +43,8 @@ if ffi.os == 'Windows' then
 		};
 		#pragma(pop)
 
-		int MultiByteToWideChar(unsigned int CodePage, uint32_t dwFlags, const char* lpMultiByteStr, int cbMultiByte, const char* lpWideCharStr, int cchWideChar);
-		int WideCharToMultiByte(unsigned int CodePage, uint32_t dwFlags, const char* lpWideCharStr, int cchWideChar, const char* lpMultiByteStr, int cchMultiByte, const char* default, int* used);
+		int MultiByteToWideChar(unsigned int CodePage, uint32_t dwFlags, const char* lpMultiByteStr, int cbMultiByte, const wchar_t* lpWideCharStr, int cchWideChar);
+		int WideCharToMultiByte(unsigned int CodePage, uint32_t dwFlags, const wchar_t* lpWideCharStr, int cchWideChar, const char* lpMultiByteStr, int cchMultiByte, const char* default, int* used);
 
 		int GetLogicalDrives(void);
 		void* FindFirstFileW(const wchar_t* lpFileName, struct WIN32_FIND_DATAW* lpFindFileData);
@@ -61,8 +59,8 @@ if ffi.os == 'Windows' then
 
 	local function towidestring(str)
 		local size = C.MultiByteToWideChar(65001, 0, str, #str, nil, 0)
-		local buf = ffi.new("char[?]", size * 2 + 2)
-		C.MultiByteToWideChar(65001, 0, str, #str, buf, size * 2)
+		local buf = ffi.new("wchar_t[?]", size + 1)
+		C.MultiByteToWideChar(65001, 0, str, #str, buf, size + 1)
 		return buf
 	end
 
@@ -70,20 +68,27 @@ if ffi.os == 'Windows' then
 		local size = C.WideCharToMultiByte(65001, 0, wstr, -1, nil, 0, nil, nil)
 		local buf = ffi.new("char[?]", size + 1)
 		size = C.WideCharToMultiByte(65001, 0, wstr, -1, buf, size, nil, nil)
-		return ffi.string(buf, size)
+		return ffi.string(buf)
 	end
 
 	local MAX_PATH = 260
-	local nameBuffer = ffi.new("char[?]", MAX_PATH * 2 + 2)
+	local nameBuffer = ffi.new("wchar_t[?]", MAX_PATH + 1)
 
 	fopen = function(name, mode) return C._wfopen(towidestring(name), towidestring(mode)) end
 	getcwd = function() return toutf8string(C._wgetcwd(nameBuffer, MAX_PATH)) end
 	chdir = function(path) return C._wchdir(towidestring(path)) end
-	unlink = function(name) return C._wunlink(towidestring(path)) end
+	unlink = function(name) return C._wunlink(towidestring(name)) end
 else
+	ffi.cdef([[
+		char* getcwd(char *buffer, int maxlen);
+		int chdir(const char* path);
+		int unlink(const char* path);
+	]])
+
 	local MAX_PATH = 4096
 	local nameBuffer = ffi.new("char[?]", MAX_PATH)
 
+	unlink, chdir = C.unlink, C.chdir
 	getcwd = function()
 		local cwd = C.getcwd(nameBuffer, MAX_PATH)
 		if cwd == nil then
@@ -106,11 +111,12 @@ function File:open(mode)
 	end
 
 	mode = mode or 'r'
-	local handle = fopen(self._name, mode)
+	local handle = fopen(self._name, mode .. 'b')
 	if handle == nil then
 		-- TODO: get error message
 		return false, "Could not open " .. self._name .. " in mode " .. mode
 	end
+
 	if C.setvbuf(handle, nil, BUFFERMODE[self._bufferMode], self._bufferSize) ~= 0 then
 		self._bufferMode, self._bufferSize = 'none', 0
 	end
@@ -226,13 +232,13 @@ function File:write(data, size)
 	end
 	if type(data) == 'string' then
 		size = (size == nil or size == 'all') and #data or size
-		local success = fwrite(data, 1, size, self._handle) == size
+		local success = tonumber(fwrite(data, 1, size, self._handle)) == size
 		if not success then
 			return false, "Could not write data"
 		end
 	else
 		size = (size == nil or size == 'all') and data:getSize() or size
-		local success = fwrite(data:getFFIPointer(), 1, size, self._handle) == size
+		local success = tonumber(fwrite(data:getFFIPointer(), 1, size, self._handle)) == size
 		if not success then
 			return false, "Could not write data"
 		end
