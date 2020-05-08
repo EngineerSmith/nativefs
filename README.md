@@ -60,7 +60,7 @@ Function names in this list are links to their LÖVE `File` counterparts. `File`
 local nativefs = require("nativefs")
 
 -- deletes all files in C:\Windows
-local files = nativefs.getDirectoryItems('C:/Windows`)
+local files = nativefs.getDirectoryItems("C:/Windows")
 for i = 1, #files do
   nativefs.remove("C:/Windows/" .. files[i])
 end
