@@ -6,11 +6,11 @@ local lu = require('luaunit')
 local fs
 
 local equals, notEquals = lu.assertEquals, lu.assertNotEquals
-local isError, containsError = lu.assertErrorMsgEquals, lu.assertErrorMsgContains
 local contains = lu.assertStrContains
 
 local function notFailed(ok, err)
 	equals(ok, true)
+	if err then print("ERROR: " .. err) end
 	equals(err, nil)
 end
 
@@ -23,6 +23,9 @@ end
 
 -----------------------------------------------------------------------------
 
+local testFile1, testSize1 = 'data/ümläüt.txt', 446
+local testFile2, testSize2 = 'data/𠆢ßЩ.txt', 450
+
 function test_fs_newFile()
 	local file = fs.newFile('test.file')
 	notEquals(file, nil)
@@ -30,37 +33,37 @@ function test_fs_newFile()
 end
 
 function test_fs_newFileData()
-	local fd = fs.newFileData('data/ümläüt.txt')
-	local filesize = love.filesystem.newFile('data/ümläüt.txt'):getSize()
+	local fd = fs.newFileData(testFile1)
+	local filesize = love.filesystem.newFile(testFile1):getSize()
 	equals(fd:getSize(), filesize)
 
-	local d = love.filesystem.read('data/ümläüt.txt')
+	local d = love.filesystem.read(testFile1)
 	equals(fd:getString(), d)
 end
 
 function test_fs_mount()
 	equals(fs.mount('data', 'test_data'), true)
-	local data, size = love.filesystem.read('test_data/ümläüt.txt')
+	local data, size = love.filesystem.read('test_data/' .. love.path.leaf(testFile1))
 	notEquals(data, nil)
 	notEquals(size, nil)
 	equals(fs.unmount('data'), true)
 end
 
 function test_fs_read()
-	local text, textSize = love.filesystem.read('data/ümläüt.txt')
-	local data, size = fs.read('data/ümläüt.txt')
+	local text, textSize = love.filesystem.read(testFile1)
+	local data, size = fs.read(testFile1)
 	equals(size, textSize)
 	equals(data, text)
 
-	local data, size = fs.read('data/ümläüt.txt', 'all')
+	local data, size = fs.read(testFile1, 'all')
 	equals(size, textSize)
 	equals(data, text)
 
-	local data, size = fs.read('string', 'data/ümläüt.txt')
+	local data, size = fs.read('string', testFile1)
 	equals(size, textSize)
 	equals(data, text)
 
-	local data, size = fs.read('data', 'data/ümläüt.txt', 'all')
+	local data, size = fs.read('data', testFile1, 'all')
 	equals(size, textSize)
 	equals(data:type(), 'FileData')
 	equals(data:getSize(), size)
@@ -72,7 +75,7 @@ function test_fs_read()
 end
 
 function test_fs_write()
-	local data, size = fs.read('data/ümläüt.txt')
+	local data, size = fs.read(testFile1)
 	notFailed(fs.write('data/write.test', data))
 
 	local data2, size2 = love.filesystem.read('data', 'data/write.test')
@@ -84,7 +87,7 @@ function test_fs_write()
 end
 
 function test_fs_append()
-	local text, textSize = love.filesystem.read('data/ümläüt.txt')
+	local text, textSize = love.filesystem.read(testFile1)
 	fs.write('data/append.test', text)
 	fs.append('data/append.test', text)
 
@@ -96,6 +99,20 @@ function test_fs_append()
 end
 
 function test_fs_lines()
+	local count, bytes = 0, 0
+	for line in fs.lines(testFile1) do
+		count = count + 1
+		bytes = bytes + #line
+	end
+	equals(count, 4)
+	equals(bytes, testSize1 - count)
+
+	local code = ""
+	for line in fs.lines('main.lua') do
+		code = code .. line .. '\n'
+	end
+	local r = fs.read('main.lua')
+	equals(code, r)
 end
 
 function test_fs_load()
@@ -155,27 +172,40 @@ function test_fs_getInfo()
 	notEquals(info, nil)
 	equals(info.type, 'file')
 
-	local info = fs.getInfo('data/ümläüt.txt')
+	local info = fs.getInfo(testFile1)
 	notEquals(info, nil)
 	equals(info.type, 'file')
-	equals(info.size, 446)
+	equals(info.size, testSize1)
 	notEquals(info.modtime, nil)
 end
 
 function test_fs_createDirectory()
+	notFailed(fs.createDirectory('data/a/b/c/defg/h'))
+	fs.remove('data/a/b/c/defg/h')
+	fs.remove('data/a/b/c/defg')
+	fs.remove('data/a/b/c')
+	fs.remove('data/a/b')
+	fs.remove('data/a')
 end
 
 function test_fs_remove()
-	local text = love.filesystem.read('data/ümläüt.txt')
+	local text = love.filesystem.read(testFile1)
 	fs.write('data/remove.test', text)
 	notFailed(fs.remove('data/remove.test'))
 	equals(love.filesystem.getInfo('data/remove.test'), nil)
+
+	fs.createDirectory('data/test1')
+	fs.createDirectory('data/test1/test2')
+	notFailed(fs.remove('data/test1/test2'))
+	equals(love.filesystem.getInfo('data/test1/test2'), nil)
+	notFailed(fs.remove('data/test1'))
+	equals(love.filesystem.getInfo('data/test1'), nil)
 end
 
 -----------------------------------------------------------------------------
 
 function test_File_open()
-	local f = fs.newFile('data/ümläüt.txt')
+	local f = fs.newFile(testFile1)
 	notEquals(f, nil)
 	equals(f:isOpen(), false)
 	equals(f:getMode(), 'c')
@@ -195,16 +225,23 @@ function test_File_open()
 	equals(f:getMode(), 'c')
 	f:close()
 
-	local f = fs.newFile('data/𠆢ßЩ.txt')
+	local f = fs.newFile(testFile2)
 	notFailed(f:open('r'))
 	f:close()
 end
 
 function test_File_setBuffer()
+	local f = fs.newFile('data/test.test')
+	f:open('w')
+	notFailed(f:setBuffer('none', 0))
+	notFailed(f:setBuffer('line', 0))
+	notFailed(f:setBuffer('full', 0))
+	f:close()
+	fs.remove('data/test.test')
 end
 
 function test_File_isEOF()
-	local f = love.filesystem.newFile('data/ümläüt.txt')
+	local f = fs.newFile(testFile1)
 	f:open('r')
 	f:read(f:getSize() - 1)
 	equals(f:isEOF(), false)
@@ -214,27 +251,84 @@ function test_File_isEOF()
 end
 
 function test_File_read()
+	local f = fs.newFile(testFile1)
+	f:open('r')
+	local data, size = f:read(5)
+	equals(data, 'Lorem')
+
+	local data, size = f:read(6)
+	equals(data, ' ipsum')
+	f:close()
 end
 
 function test_File_lines()
+	local text = fs.read(testFile2)
+	local f = fs.newFile(testFile2)
+	local lines = ""
+	f:open('r')
+	for line in f:lines() do lines = lines .. line .. '\r\n' end
+	f:close()
+	equals(lines, text)
+
+	local text = fs.read(testFile1)
+	local f = fs.newFile(testFile1)
+	local lines = ""
+	f:open('r')
+	for line in f:lines() do lines = lines .. line .. '\n' end
+	f:close()
+	equals(lines, text)
 end
 
 function test_File_write()
+	local f = fs.newFile('data/write.test')
+	notFailed(f:open('w'))
+	notFailed(f:write('hello'))
+	f:close()
+	f:open('a')
+	notFailed(f:write('world'))
+	f:close()
+
+	notFailed(f:open('r'))
+	local hello, size = f:read()
+	equals(hello, 'helloworld')
+	equals(size, #'helloworld')
+	f:close()
+
+	fs.remove('data/write.test')
 end
 
 function test_File_seek()
+	local f = fs.newFile(testFile1)
+	f:open('r')
+	f:seek(72)
+	local data, size = f:read(6)
+	equals(data, 'tempor')
+	f:close()
 end
 
 function test_File_tell()
+	local f = fs.newFile(testFile1)
+	f:open('r')
+	f:read(172)
+	equals(f:tell(), 172)
+	f:close()
 end
 
 function test_File_flush()
+	local f = fs.newFile('data/write.test')
+	f:open('w')
+	f:write('hello')
+	notFailed(f:flush())
+	f:close()
 end
 
 local _globals = {}
 
 function test_xxx_globalsCheck()
 	for k, v in pairs(_G) do
+		if v ~= _globals[k] then
+			print("LEAKED GLOBAL: " .. k)
+		end
 		equals(v, _globals[k])
 	end
 end

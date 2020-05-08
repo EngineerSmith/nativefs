@@ -8,7 +8,7 @@ ffi.cdef([[
 
 	typedef struct FILE FILE;
 
-	FILE* fopen(const char* pathname, const char* mode);
+	FILE* fopen(const char* path, const char* mode);
 	size_t fread(void* ptr, size_t size, size_t nmemb, FILE* stream);
 	size_t fwrite(const void* ptr, size_t size, size_t nmemb, FILE* stream);
 	int fclose(FILE* stream);
@@ -20,9 +20,9 @@ ffi.cdef([[
 ]])
 
 local C = ffi.C
-local fclose, ftell, fseek, fflush, feof = C.fclose, C.ftell, C.fseek, C.fflush
-local fread, fwrite, feof, setvbuf = C.fread, C.fwrite, C.feof, C.setvbuf
-local fopen, getcwd, chdir, unlink -- system specific
+local fclose, ftell, fseek, fflush = C.fclose, C.ftell, C.fseek, C.fflush
+local fread, fwrite, setvbuf = C.fread, C.fwrite, C.setvbuf
+local fopen, getcwd, chdir, unlink, mkdir, rmdir, feof -- system specific
 local loveC = ffi.os == 'Windows' and ffi.load('love') or C
 
 local BUFFERMODE = {
@@ -37,10 +37,12 @@ if ffi.os == 'Windows' then
 		int WideCharToMultiByte(unsigned int cp, uint32_t flags, const wchar_t* wc, int cwc, const char* mb,
 		                        int cmb, const char* def, int* used);
 		int GetLogicalDrives(void);
+		int CreateDirectoryW(const wchar_t* path, void*);
 		int _wchdir(const wchar_t* path);
 		wchar_t* _wgetcwd(wchar_t* buffer, int maxlen);
-		FILE* _wfopen(const wchar_t* name, const wchar_t* mode);
-		int _wunlink(const wchar_t* name);
+		FILE* _wfopen(const wchar_t* path, const wchar_t* mode);
+		int _wunlink(const wchar_t* path);
+		int _wrmdir(const wchar_t* path);
 	]])
 
 	BUFFERMODE.line, BUFFERMODE.none = 64, 4
@@ -62,37 +64,54 @@ if ffi.os == 'Windows' then
 	local MAX_PATH = 260
 	local nameBuffer = ffi.new("wchar_t[?]", MAX_PATH + 1)
 
-	fopen = function(name, mode) return C._wfopen(towidestring(name), towidestring(mode)) end
+	fopen = function(path, mode) return C._wfopen(towidestring(path), towidestring(mode)) end
 	getcwd = function() return toutf8string(C._wgetcwd(nameBuffer, MAX_PATH)) end
-	chdir = function(path) return C._wchdir(towidestring(path)) end
-	unlink = function(name) return C._wunlink(towidestring(name)) end
+	chdir = function(path) return C._wchdir(towidestring(path)) == 0 end
+	unlink = function(path) return C._wunlink(towidestring(path)) == 0 end
+	mkdir = function(path) return C.CreateDirectoryW(towidestring(path), nil) ~= 0 end
+	rmdir = function(path) return C._wrmdir(towidestring(path)) == 0 end
 else
 	ffi.cdef([[
 		char* getcwd(char *buffer, int maxlen);
 		int chdir(const char* path);
 		int unlink(const char* path);
+		int mkdir(const char* path, int mode);
+		int rmdir(const char* path);
 	]])
 
 	local MAX_PATH = 4096
 	local nameBuffer = ffi.new("char[?]", MAX_PATH)
 
-	fopen, unlink, chdir = C.fopen, C.unlink, C.chdir
+	fopen = C.fopen
+	unlink = function(path) return ffi.C.unlink(path) == 0 end
+	chdir = function(path) return ffi.C.chdir(path) == 0 end
+	mkdir = function(path) return ffi.C.mkdir(path, 0x1ed) == 0 end
+	rmdir = function(path) return ffi.C.rmdir(path) == 0 end
+
 	getcwd = function()
 		local cwd = C.getcwd(nameBuffer, MAX_PATH)
 		return cwd ~= nil and ffi.string(cwd) or nil
 	end
 end
 
+feof = function(stream) return C.feof(stream) ~= 0 end
+
 -----------------------------------------------------------------------------
 -- NOTE: nil checks on file handles MUST be explicit (_handle == nil)
 -- due to ffi's NULL semantics!
 
-local File = {}
+local File = {
+	getBuffer = function(self) return self._bufferMode, self._bufferSize end,
+	getFilename = function(self) return self._name end,
+	getMode = function(self) return self._mode end,
+	isEOF = function(self) return not self:isOpen() or feof(self._handle) or self:tell() == self:getSize() end,
+	isOpen = function(self) return self._mode ~= 'c' and self._handle ~= nil end,
+}
+
 File.__index = File
 
 function File:open(mode)
 	if self._mode ~= 'c' then return false, "File is already open" end
-
 	if mode ~= 'r' and mode ~= 'w' and mode ~= 'a' then
 		return false, "Invalid file open mode: " .. mode
 	end
@@ -111,10 +130,7 @@ function File:open(mode)
 end
 
 function File:close()
-	if self._handle == nil or self._mode == 'c' then
-		return false, "File is not open"
-	end
-
+	if self._handle == nil or self._mode == 'c' then return false, "File is not open" end
 	ffi.gc(self._handle, nil)
 	fclose(self._handle)
 	self._handle, self._mode = nil, 'c'
@@ -122,29 +138,30 @@ function File:close()
 end
 
 function File:setBuffer(mode, size)
-	bufferMode = BUFFERMODE[mode]
+	local bufferMode = BUFFERMODE[mode]
 	if not bufferMode then
-		return false, "Invalid buffer mode: " .. mode .. " (expected 'none', 'full', or 'line')"
+		return false, "Invalid buffer mode " .. mode .. " (expected 'none', 'full', or 'line')"
 	end
 
-	size = math.max(0, size or 0)
-	self._bufferMode, self._bufferSize = mode, size
-	if self._mode == 'c' then return true end
+	if mode == 'line' or mode == 'full' then
+		size = math.max(2, size or 2) -- Windows requires buffer to be at least 2 bytes
+	else
+		size = math.max(0, size or 0)
+	end
+	if self._mode == 'c' then
+		self._bufferMode, self._bufferSize = mode, size
+		return true
+	end
 
-	return C.setvbuf(self._handle, nil, bufferMode, size) == 0
+	local success = C.setvbuf(self._handle, nil, bufferMode, size) == 0
+	if success then
+		self._bufferMode, self._bufferSize = mode, size
+		return true
+	end
+
+	return false, "Could not set buffer mode"
 end
 
-function File:getBuffer()
-	return self._bufferMode, self._bufferSize
-end
-
-function File:getFilename()
-	return self._name
-end
-
-function File:getMode()
-	return self._mode
-end
 
 function File:getSize()
 	-- NOTE: The correct way to do this would be a stat() call, which requires a
@@ -164,14 +181,6 @@ function File:getSize()
 		self:seek(pos)
 	end
 	return size;
-end
-
-function File:isEOF()
-	return not self:isOpen() or feof(self._handle) ~= 0
-end
-
-function File:isOpen()
-	return self._mode ~= 'c' and self._handle ~= nil
 end
 
 function File:read(containerOrBytes, bytes)
@@ -208,6 +217,38 @@ function File:read(containerOrBytes, bytes)
 end
 
 function File:lines()
+	if self._mode ~= 'r' then
+		error("File is not opened for reading")
+	end
+
+	local BUFFERSIZE = 4096
+	local buffer = ffi.new('unsigned char[?]', BUFFERSIZE)
+	local bytesRead = tonumber(fread(buffer, 1, BUFFERSIZE, self._handle))
+
+	local bufferPos = 0
+	local offset = self:tell()
+	return function()
+		self:seek(offset)
+		local line = {}
+		data = data
+		while true do
+			for i = bufferPos, bytesRead - 1 do
+				if buffer[i] ~= 10 and buffer[i] ~= 13 then
+					table.insert(line, string.char(buffer[i]))
+				elseif buffer[i] == 10 then
+					bufferPos = i + 1
+					return table.concat(line)
+				end
+			end
+
+			bytesRead = tonumber(fread(buffer, 1, BUFFERSIZE, self._handle))
+			if bytesRead == 0 then break end
+			offset, bufferPos = offset + bytesRead, 0
+		end
+		if #line > 0 then
+			return table.concat(line)
+		end
+	end
 end
 
 function File:write(data, size)
@@ -241,8 +282,8 @@ function File:tell()
 end
 
 function File:flush()
-	if self._handle == nil then return end
-	return fflush(self._handle)
+	if self._handle == nil then return false, "File is not open" end
+	return fflush(self._handle) == 0
 end
 
 function File:release()
@@ -366,7 +407,7 @@ function nativefs.getWorkingDirectory()
 end
 
 function nativefs.setWorkingDirectory(path)
-	if chdir(path) ~= 0 then
+	if not chdir(path) then
 		return false, "Could not set working directory"
 	end
 	return true
@@ -398,11 +439,27 @@ function nativefs.getInfo(path, filtertype)
 end
 
 function nativefs.createDirectory(path)
+	local current = ''
+	for dir in path:gmatch('[^/\\]+') do
+		current = (current == '' and current or current .. '/') .. dir
+		local info = nativefs.getInfo(current, 'directory')
+		if not info and not mkdir(current) then
+			return false, "Could not create directory " .. current
+		end
+	end
+	return true
 end
 
 function nativefs.remove(name)
-	if unlink(name) ~= 0 then
-		return false, "Could not remove file " .. name
+	local info = nativefs.getInfo(name)
+	if info.type == 'directory' then
+		if not rmdir(name) then
+			return false, "Could not remove directory " .. name
+		end
+	else
+		if not unlink(name) then
+			return false, "Could not remove file " .. name
+		end
 	end
 	return true
 end
