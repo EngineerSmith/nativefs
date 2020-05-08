@@ -452,6 +452,9 @@ end
 
 function nativefs.remove(name)
 	local info = nativefs.getInfo(name)
+	if not info then
+		return false, "Could not remove " .. name
+	end
 	if info.type == 'directory' then
 		if not rmdir(name) then
 			return false, "Could not remove directory " .. name
