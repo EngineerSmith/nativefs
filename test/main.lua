@@ -3,7 +3,6 @@ package.path = package.path .. ';../?.lua'
 
 local ffi = require('ffi')
 local lu = require('luaunit')
-local lfs = love.filesystem
 local fs
 
 local equals, notEquals = lu.assertEquals, lu.assertNotEquals
@@ -107,12 +106,17 @@ function test_fs_load()
 end
 
 function test_fs_getDirectoryItems()
-	local items = fs.getDirectoryItems('data')
-
-	local map = {}
+	local items, map = fs.getDirectoryItems('data'), {}
 	for i = 1, #items do map[items[i]] = true end
-	equals(map['ümläüt.txt'], true)
-	equals(map['test.lua'], true)
+
+	local items2, map2 = love.filesystem.getDirectoryItems('data'), {}
+	for i = 1, #items2 do map2[items2[i]] = true end
+
+	equals(#items, #items2)
+
+	for i = 1, #items2 do
+		equals(map[items2[i]], map2[items2[i]])
+	end
 end
 
 function test_fs_setWorkingDirectory()
@@ -140,6 +144,22 @@ function test_fs_getDriveList()
 end
 
 function test_fs_getInfo()
+	local info = fs.getInfo('data')
+	notEquals(info, nil)
+	equals(info.type, 'directory')
+
+	local info = fs.getInfo('data', 'file')
+	equals(info, nil)
+
+	local info = fs.getInfo('main.lua')
+	notEquals(info, nil)
+	equals(info.type, 'file')
+
+	local info = fs.getInfo('data/ümläüt.txt')
+	notEquals(info, nil)
+	equals(info.type, 'file')
+	equals(info.size, 446)
+	notEquals(info.modtime, nil)
 end
 
 function test_fs_createDirectory()
@@ -173,8 +193,11 @@ function test_File_open()
 
 	hasFailed('File is not open', f:close())
 	equals(f:getMode(), 'c')
+	f:close()
 
-	f:release()
+	local f = fs.newFile('data/𠆢ßЩ.txt')
+	notFailed(f:open('r'))
+	f:close()
 end
 
 function test_File_setBuffer()
@@ -208,13 +231,14 @@ end
 function test_File_flush()
 end
 
+local _globals = {}
+
 function test_xxx_globalsCheck()
 	for k, v in pairs(_G) do
 		equals(v, _globals[k])
 	end
 end
 
-_globals = {}
 for k, v in pairs(_G) do _globals[k] = v end
 
 fs = require('nativefs')

@@ -33,28 +33,10 @@ local BUFFERMODE = {
 
 if ffi.os == 'Windows' then
 	ffi.cdef([[
-		typedef void* HANDLE;
-
-		#pragma pack(push)
-		#pragma pack(1)
-		struct WIN32_FIND_DATAW {
-			uint32_t dwFileWttributes;
-			uint64_t ftCreationTime;
-			uint64_t ftLastAccessTime;
-			uint64_t ftLastWriteTime;
-			uint32_t dwReserved[4];
-			char cFileName[520];
-			char cAlternateFileName[28];
-		};
-		#pragma(pop)
-
 		int MultiByteToWideChar(unsigned int cp, uint32_t flags, const char* mb, int cmb, const wchar_t* wc, int cwc);
 		int WideCharToMultiByte(unsigned int cp, uint32_t flags, const wchar_t* wc, int cwc, const char* mb,
 		                        int cmb, const char* def, int* used);
 		int GetLogicalDrives(void);
-		void* FindFirstFileW(const wchar_t* lpFileName, struct WIN32_FIND_DATAW* lpFindFileData);
-		bool FindNextFileW(HANDLE hFindFile, struct WIN32_FIND_DATAW* fd);
-		bool FindClose(HANDLE hFindFile);
 		int _wchdir(const wchar_t* path);
 		wchar_t* _wgetcwd(wchar_t* buffer, int maxlen);
 		FILE* _wfopen(const wchar_t* name, const wchar_t* mode);
@@ -97,7 +79,7 @@ else
 	fopen, unlink, chdir = C.fopen, C.unlink, C.chdir
 	getcwd = function()
 		local cwd = C.getcwd(nameBuffer, MAX_PATH)
-		return cwd and ffi.string(cwd) or nil
+		return cwd ~= nil and ffi.string(cwd) or nil
 	end
 end
 
@@ -198,6 +180,10 @@ function File:read(containerOrBytes, bytes)
 	end
 
 	local container = bytes ~= nil and containerOrBytes or 'string'
+	if container ~= 'string' and container ~= 'data' then
+		error("Invalid container type: " .. container)
+	end
+
 	bytes = not bytes and containerOrBytes or 'all'
 	bytes = bytes == 'all' and self:getSize() - self:tell() or math.min(self:getSize() - self:tell(), bytes)
 
@@ -355,18 +341,24 @@ function nativefs.load(name)
 	return loadstring(chunk, name)
 end
 
-function nativefs.getDirectoryItems(dir, callback)
+local function withTempMount(dir, fn)
 	local mountPoint = loveC.PHYSFS_getMountPoint(dir)
 	if mountPoint ~= nil then
-		return love.filesystem.getDirectoryItems(ffi.string(mountPoint), callback)
+		return fn(ffi.string(mountPoint))
 	end
 
 	if not nativefs.mount(dir, '__nativefs__temp__') then
 		return false, "Could not mount " .. dir
 	end
-	local items = love.filesystem.getDirectoryItems('__nativefs__temp__', callback)
+	local a, b, c, d = fn('__nativefs__temp__')
 	nativefs.unmount(dir)
-	return items
+	return a, b, c, d
+end
+
+function nativefs.getDirectoryItems(dir, callback)
+	return withTempMount(dir, function(mount)
+		return love.filesystem.getDirectoryItems(mount, callback)
+	end)
 end
 
 function nativefs.getWorkingDirectory()
@@ -396,7 +388,13 @@ function nativefs.getDriveList()
 	return drives
 end
 
-function nativefs.getInfo(name)
+function nativefs.getInfo(path, filtertype)
+	local dir = path:match("(.*[\\/]).*$") or './'
+	local file = love.path.leaf(path)
+	return withTempMount(dir, function(mount)
+		local filepath = string.format("%s/%s", mount, file)
+		return love.filesystem.getInfo(filepath, filtertype)
+	end)
 end
 
 function nativefs.createDirectory(path)
