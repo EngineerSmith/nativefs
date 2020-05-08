@@ -200,6 +200,8 @@ function test_fs_remove()
 	equals(love.filesystem.getInfo('data/test1/test2'), nil)
 	notFailed(fs.remove('data/test1'))
 	equals(love.filesystem.getInfo('data/test1'), nil)
+
+	hasFailed("Could not remove does_not_exist", fs.remove('does_not_exist'))
 end
 
 -----------------------------------------------------------------------------
