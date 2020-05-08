@@ -21,9 +21,9 @@ nativefs replicates a subset of the [love.filesystem](https://love2d.org/wiki/lo
 * [nativefs.createDirectory](https://love2d.org/wiki/love.filesystem.createDirectory)
 * [nativefs.remove](https://love2d.org/wiki/love.filesystem.remove)
 
-Function names in this list are links to their `love.filesystem` counterparts. All functions are designed to work the same as `love.filesystem`, but without the path restrictions that LÖVE imposes; i.e., they allow full access to the filesystem.
+Function names in this list are links to their `love.filesystem` counterparts. All functions are designed to behave the same way as `love.filesystem`, but without the path restrictions that LÖVE imposes; i.e., they allow full access to the filesystem.
 
-Additional functions that not available in `love.filesystem`:
+Additional functions that are not available in `love.filesystem`:
 
 * `nativefs.getDriveList`  
 Returns a table of all populated drive letters on Windows (`{ 'C:/', 'D:/', ...}`). On systems that don't use drive letters, a table with the single entry `/` is returned.
@@ -52,7 +52,7 @@ Changes the working directory.
 * [File:flush](https://love2d.org/wiki/\(File\):flush)
 * [File:release](https://love2d.org/wiki/Object:release)
 
-Function names in this list are links to their LÖVE `File` counterparts. `File` is designed to work the same as LÖVE's `File` class.
+Function names in this list are links to their LÖVE `File` counterparts. `File` is designed to work the same way as LÖVE's `File` class.
 
 ## Example
 
