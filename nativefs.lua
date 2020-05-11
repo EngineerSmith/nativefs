@@ -115,7 +115,6 @@ function File:open(mode)
 	local handle = fopen(self._name, MODEMAP[mode])
 	if handle == nil then return false, "Could not open " .. self._name .. " in mode " .. mode end
 
-	print(self._bufferMode, BUFFERMODE[self._bufferMode], self._bufferSize)
 	if C.setvbuf(handle, nil, BUFFERMODE[self._bufferMode], self._bufferSize) ~= 0 then
 		self._bufferMode, self._bufferSize = 'none', 0
 	end
