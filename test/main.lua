@@ -216,7 +216,7 @@ function test_File_open()
 	equals(f:isOpen(), true)
 	equals(f:getMode(), 'r')
 
-	hasFailed('File is already open', f:open())
+	hasFailed('File ' .. testFile1 .. ' is already open', f:open())
 	equals(f:getMode(), 'r')
 
 	notFailed(f:close())

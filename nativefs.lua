@@ -20,16 +20,8 @@ ffi.cdef([[
 ]])
 
 local C = ffi.C
-local fclose, ftell, fseek, fflush = C.fclose, C.ftell, C.fseek, C.fflush
-local fread, fwrite, setvbuf = C.fread, C.fwrite, C.setvbuf
-local fopen, getcwd, chdir, unlink, mkdir, rmdir, feof -- system specific
-local loveC = ffi.os == 'Windows' and ffi.load('love') or C
-
-local BUFFERMODE = {
-	full = 0,
-	line = 1,
-	none = 2,
-}
+local loveC = ffi.os == 'Windows' and pcall(ffi.load, 'love') or C
+local fopen, getcwd, chdir, unlink, mkdir, rmdir, BUFFERMODE
 
 if ffi.os == 'Windows' then
 	ffi.cdef([[
@@ -45,24 +37,24 @@ if ffi.os == 'Windows' then
 		int _wrmdir(const wchar_t* path);
 	]])
 
-	BUFFERMODE.line, BUFFERMODE.none = 64, 4
+	BUFFERMODE = { full = 0, line = 64, none = 2 }
 
 	local function towidestring(str)
 		local size = C.MultiByteToWideChar(65001, 0, str, #str, nil, 0)
-		local buf = ffi.new("wchar_t[?]", size + 1)
+		local buf = ffi.new('wchar_t[?]', size + 1)
 		C.MultiByteToWideChar(65001, 0, str, #str, buf, size)
 		return buf
 	end
 
 	local function toutf8string(wstr)
 		local size = C.WideCharToMultiByte(65001, 0, wstr, -1, nil, 0, nil, nil)
-		local buf = ffi.new("char[?]", size + 1)
+		local buf = ffi.new('char[?]', size + 1)
 		size = C.WideCharToMultiByte(65001, 0, wstr, -1, buf, size, nil, nil)
 		return ffi.string(buf)
 	end
 
 	local MAX_PATH = 260
-	local nameBuffer = ffi.new("wchar_t[?]", MAX_PATH + 1)
+	local nameBuffer = ffi.new('wchar_t[?]', MAX_PATH + 1)
 
 	fopen = function(path, mode) return C._wfopen(towidestring(path), towidestring(mode)) end
 	getcwd = function() return toutf8string(C._wgetcwd(nameBuffer, MAX_PATH)) end
@@ -71,6 +63,8 @@ if ffi.os == 'Windows' then
 	mkdir = function(path) return C.CreateDirectoryW(towidestring(path), nil) ~= 0 end
 	rmdir = function(path) return C._wrmdir(towidestring(path)) == 0 end
 else
+	BUFFERMODE = { full = 0, line = 1, none = 2 }
+
 	ffi.cdef([[
 		char* getcwd(char *buffer, int maxlen);
 		int chdir(const char* path);
@@ -80,7 +74,7 @@ else
 	]])
 
 	local MAX_PATH = 4096
-	local nameBuffer = ffi.new("char[?]", MAX_PATH)
+	local nameBuffer = ffi.new('char[?]', MAX_PATH)
 
 	fopen = C.fopen
 	unlink = function(path) return ffi.C.unlink(path) == 0 end
@@ -94,8 +88,6 @@ else
 	end
 end
 
-feof = function(stream) return C.feof(stream) ~= 0 end
-
 -----------------------------------------------------------------------------
 -- NOTE: nil checks on file handles MUST be explicit (_handle == nil)
 -- due to ffi's NULL semantics!
@@ -104,22 +96,24 @@ local File = {
 	getBuffer = function(self) return self._bufferMode, self._bufferSize end,
 	getFilename = function(self) return self._name end,
 	getMode = function(self) return self._mode end,
-	isEOF = function(self) return not self:isOpen() or feof(self._handle) or self:tell() == self:getSize() end,
+	isEOF = function(self) return not self:isOpen() or C.feof(self._handle) ~= 0 or self:tell() == self:getSize() end,
 	isOpen = function(self) return self._mode ~= 'c' and self._handle ~= nil end,
 }
 
 File.__index = File
 
-function File:open(mode)
-	if self._mode ~= 'c' then return false, "File is already open" end
-	if mode ~= 'r' and mode ~= 'w' and mode ~= 'a' then
-		return false, "Invalid file open mode: " .. mode
-	end
+local MODEMAP = {
+	r = 'rb',
+	w = 'wb',
+	a = 'ab',
+}
 
-	local handle = fopen(self._name, mode .. 'b')
-	if handle == nil then
-		return false, "Could not open " .. self._name .. " in mode " .. mode
-	end
+function File:open(mode)
+	if self._mode ~= 'c' then return false, "File " .. self._name .. " is already open" end
+	if not MODEMAP[mode] then return false, "Invalid open mode for " .. self._name .. ": " .. mode end
+
+	local handle = fopen(self._name, MODEMAP[mode])
+	if handle == nil then return false, "Could not open " .. self._name .. " in mode " .. mode end
 
 	if C.setvbuf(handle, nil, BUFFERMODE[self._bufferMode], self._bufferSize) ~= 0 then
 		self._bufferMode, self._bufferSize = 'none', 0
@@ -130,9 +124,8 @@ function File:open(mode)
 end
 
 function File:close()
-	if self._handle == nil or self._mode == 'c' then return false, "File is not open" end
-	ffi.gc(self._handle, nil)
-	fclose(self._handle)
+	if self._mode == 'c' then return false, "File is not open" end
+	C.fclose(ffi.gc(self._handle, nil))
 	self._handle, self._mode = nil, 'c'
 	return true
 end
@@ -173,7 +166,7 @@ function File:getSize()
 	end
 
 	local pos = mustOpen and 0 or self:tell()
-	fseek(self._handle, 0, 2)
+	C.fseek(self._handle, 0, 2)
 	local size = tonumber(self:tell())
 	if mustOpen then
 		self:close()
@@ -202,7 +195,7 @@ function File:read(containerOrBytes, bytes)
 	end
 
 	local data = love.data.newByteData(bytes)
-	local r = tonumber(fread(data:getFFIPointer(), 1, bytes, self._handle))
+	local r = tonumber(C.fread(data:getFFIPointer(), 1, bytes, self._handle))
 
 	if container == 'string' then
 		local str = data:getString()
@@ -223,14 +216,13 @@ function File:lines()
 
 	local BUFFERSIZE = 4096
 	local buffer = ffi.new('unsigned char[?]', BUFFERSIZE)
-	local bytesRead = tonumber(fread(buffer, 1, BUFFERSIZE, self._handle))
+	local bytesRead = tonumber(C.fread(buffer, 1, BUFFERSIZE, self._handle))
 
 	local bufferPos = 0
 	local offset = self:tell()
 	return function()
 		self:seek(offset)
 		local line = {}
-		data = data
 		while true do
 			for i = bufferPos, bytesRead - 1 do
 				if buffer[i] ~= 10 and buffer[i] ~= 13 then
@@ -241,7 +233,7 @@ function File:lines()
 				end
 			end
 
-			bytesRead = tonumber(fread(buffer, 1, BUFFERSIZE, self._handle))
+			bytesRead = tonumber(C.fread(buffer, 1, BUFFERSIZE, self._handle))
 			if bytesRead == 0 then break end
 			offset, bufferPos = offset + bytesRead, 0
 		end
@@ -255,35 +247,34 @@ function File:write(data, size)
 	if self._mode ~= 'w' and self._mode ~= 'a' then
 		return false, "File " .. self._name .. " not opened for writing"
 	end
+	local toWrite, writeSize
 	if type(data) == 'string' then
-		size = (size == nil or size == 'all') and #data or size
-		local success = tonumber(fwrite(data, 1, size, self._handle)) == size
-		if not success then
-			return false, "Could not write data"
-		end
+		writeSize = (size == nil or size == 'all') and #data or size
+		toWrite = data
 	else
-		size = (size == nil or size == 'all') and data:getSize() or size
-		local success = tonumber(fwrite(data:getFFIPointer(), 1, size, self._handle)) == size
-		if not success then
-			return false, "Could not write data"
-		end
+		writeSize = (size == nil or size == 'all') and data:getSize() or size
+		toWrite = data:getFFIPointer()
+	end
+
+	if tonumber(C.fwrite(toWrite, 1, writeSize, self._handle)) ~= writeSize then
+		return false, "Could not write data"
 	end
 	return true
 end
 
 function File:seek(pos)
 	if self._handle == nil then return false end
-	return fseek(self._handle, pos, 0) == 0
+	return C.fseek(self._handle, pos, 0) == 0
 end
 
 function File:tell()
 	if self._handle == nil then return -1 end
-	return tonumber(ftell(self._handle))
+	return tonumber(C.ftell(self._handle))
 end
 
 function File:flush()
 	if self._handle == nil then return false, "File is not open" end
-	return fflush(self._handle) == 0
+	return C.fflush(self._handle) == 0
 end
 
 function File:release()
@@ -310,8 +301,9 @@ function nativefs.newFileData(filepath)
 	local ok, err = f:open('r')
 	if not ok then return nil, err end
 
-	local data = f:read()
+	local data, err = f:read()
 	f:close()
+	if not data then return nil, err end
 	return love.filesystem.newFileData(data, filepath)
 end
 
@@ -347,9 +339,9 @@ function nativefs.read(containerOrName, nameOrSize, sizeOrNil)
 	return data, size
 end
 
-function nativefs.write(name, data, size)
+local function writeFile(mode, name, data, size)
 	local file = nativefs.newFile(name)
-	if not file:open('w') then
+	if not file:open(mode) then
 		return nil, "Could not open file for writing: " .. name
 	end
 
@@ -358,15 +350,12 @@ function nativefs.write(name, data, size)
 	return ok, err
 end
 
-function nativefs.append(name, data, size)
-	local file = nativefs.newFile(name)
-	if not file:open('a') then
-		return nil, "Could not open file for writing: " .. name
-	end
+function nativefs.write(name, data, size)
+	return writeFile('w', name, data, size)
+end
 
-	local ok, err = file:write(data, size or 'all')
-	file:close()
-	return ok, err
+function nativefs.append(name, data, size)
+	return writeFile('a', name, data, size)
 end
 
 function nativefs.lines(name)
@@ -382,34 +371,12 @@ function nativefs.load(name)
 	return loadstring(chunk, name)
 end
 
-local function withTempMount(dir, fn)
-	local mountPoint = loveC.PHYSFS_getMountPoint(dir)
-	if mountPoint ~= nil then
-		return fn(ffi.string(mountPoint))
-	end
-
-	if not nativefs.mount(dir, '__nativefs__temp__') then
-		return false, "Could not mount " .. dir
-	end
-	local a, b, c, d = fn('__nativefs__temp__')
-	nativefs.unmount(dir)
-	return a, b, c, d
-end
-
-function nativefs.getDirectoryItems(dir, callback)
-	return withTempMount(dir, function(mount)
-		return love.filesystem.getDirectoryItems(mount, callback)
-	end)
-end
-
 function nativefs.getWorkingDirectory()
 	return getcwd()
 end
 
 function nativefs.setWorkingDirectory(path)
-	if not chdir(path) then
-		return false, "Could not set working directory"
-	end
+	if not chdir(path) then return false, "Could not set working directory" end
 	return true
 end
 
@@ -429,42 +396,49 @@ function nativefs.getDriveList()
 	return drives
 end
 
-function nativefs.getInfo(path, filtertype)
-	local dir = path:match("(.*[\\/]).*$") or './'
-	local file = love.path.leaf(path)
-	return withTempMount(dir, function(mount)
-		local filepath = string.format("%s/%s", mount, file)
-		return love.filesystem.getInfo(filepath, filtertype)
-	end)
-end
-
 function nativefs.createDirectory(path)
 	local current = ''
 	for dir in path:gmatch('[^/\\]+') do
 		current = (current == '' and current or current .. '/') .. dir
 		local info = nativefs.getInfo(current, 'directory')
-		if not info and not mkdir(current) then
-			return false, "Could not create directory " .. current
-		end
+		if not info and not mkdir(current) then return false, "Could not create directory " .. current end
 	end
 	return true
 end
 
 function nativefs.remove(name)
 	local info = nativefs.getInfo(name)
-	if not info then
-		return false, "Could not remove " .. name
-	end
+	if not info then return false, "Could not remove " .. name end
 	if info.type == 'directory' then
-		if not rmdir(name) then
-			return false, "Could not remove directory " .. name
-		end
-	else
-		if not unlink(name) then
-			return false, "Could not remove file " .. name
-		end
+		if not rmdir(name) then return false, "Could not remove directory " .. name end
+		return true
 	end
+	if not unlink(name) then return false, "Could not remove file " .. name end
 	return true
+end
+
+local function withTempMount(dir, fn)
+	local mountPoint = loveC.PHYSFS_getMountPoint(dir)
+	if mountPoint ~= nil then return fn(ffi.string(mountPoint)) end
+	if not nativefs.mount(dir, '__nativefs__temp__') then return false, "Could not mount " .. dir end
+	local a, b = fn('__nativefs__temp__')
+	nativefs.unmount(dir)
+	return a, b
+end
+
+function nativefs.getDirectoryItems(dir, callback)
+	return withTempMount(dir, function(mount)
+		return love.filesystem.getDirectoryItems(mount, callback)
+	end)
+end
+
+function nativefs.getInfo(path, filtertype)
+	local dir = path:match("(.*[\\/]).*$") or './'
+	local file = love.path.leaf(path)
+	return withTempMount(dir, function(mount)
+		local filepath = string.format('%s/%s', mount, file)
+		return love.filesystem.getInfo(filepath, filtertype)
+	end)
 end
 
 return nativefs
