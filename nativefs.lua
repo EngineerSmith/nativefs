@@ -20,7 +20,7 @@ ffi.cdef([[
 ]])
 
 local C = ffi.C
-local loveC = ffi.os == 'Windows' and pcall(ffi.load, 'love') or C
+local loveC = ffi.os == 'Windows' and ffi.load('love') or C
 local fopen, getcwd, chdir, unlink, mkdir, rmdir, BUFFERMODE
 
 if ffi.os == 'Windows' then
@@ -37,7 +37,7 @@ if ffi.os == 'Windows' then
 		int _wrmdir(const wchar_t* path);
 	]])
 
-	BUFFERMODE = { full = 0, line = 64, none = 2 }
+	BUFFERMODE = { full = 0, line = 64, none = 4 }
 
 	local function towidestring(str)
 		local size = C.MultiByteToWideChar(65001, 0, str, #str, nil, 0)
@@ -115,6 +115,7 @@ function File:open(mode)
 	local handle = fopen(self._name, MODEMAP[mode])
 	if handle == nil then return false, "Could not open " .. self._name .. " in mode " .. mode end
 
+	print(self._bufferMode, BUFFERMODE[self._bufferMode], self._bufferSize)
 	if C.setvbuf(handle, nil, BUFFERMODE[self._bufferMode], self._bufferSize) ~= 0 then
 		self._bufferMode, self._bufferSize = 'none', 0
 	end
