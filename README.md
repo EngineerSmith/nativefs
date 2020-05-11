@@ -56,7 +56,7 @@ Function names in this list are links to their LÖVE `File` counterparts. `File`
 
 ## Example
 
-```
+```lua
 local nativefs = require("nativefs")
 
 -- deletes all files in C:\Windows

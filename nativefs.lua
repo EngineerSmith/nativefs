@@ -301,10 +301,9 @@ function nativefs.newFileData(filepath)
 	local ok, err = f:open('r')
 	if not ok then return nil, err end
 
-	local data, err = f:read()
+	local data, err = f:read('data', 'all')
 	f:close()
-	if not data then return nil, err end
-	return love.filesystem.newFileData(data, filepath)
+	return data, err
 end
 
 function nativefs.mount(archive, mountPoint, appendToPath)
