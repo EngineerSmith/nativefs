@@ -134,6 +134,8 @@ function test_fs_getDirectoryItems()
 	for i = 1, #items2 do
 		equals(map[items2[i]], map2[items2[i]])
 	end
+
+	equals(#fs.getDirectoryItems('does_not_exist'), 0)
 end
 
 function test_fs_setWorkingDirectory()
@@ -171,6 +173,8 @@ function test_fs_getInfo()
 	local info = fs.getInfo('main.lua')
 	notEquals(info, nil)
 	equals(info.type, 'file')
+
+	equals(fs.getInfo('does_not_exist', nil))
 
 	local info = fs.getInfo(testFile1)
 	notEquals(info, nil)

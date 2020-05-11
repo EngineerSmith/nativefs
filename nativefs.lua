@@ -426,18 +426,20 @@ local function withTempMount(dir, fn)
 end
 
 function nativefs.getDirectoryItems(dir, callback)
-	return withTempMount(dir, function(mount)
+	local result, err = withTempMount(dir, function(mount)
 		return love.filesystem.getDirectoryItems(mount, callback)
 	end)
+	return result or {}
 end
 
 function nativefs.getInfo(path, filtertype)
 	local dir = path:match("(.*[\\/]).*$") or './'
 	local file = love.path.leaf(path)
-	return withTempMount(dir, function(mount)
+	local result, err = withTempMount(dir, function(mount)
 		local filepath = string.format('%s/%s', mount, file)
 		return love.filesystem.getInfo(filepath, filtertype)
 	end)
+	return result or nil
 end
 
 return nativefs
