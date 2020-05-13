@@ -60,30 +60,25 @@ function File:setBuffer(mode, size)
 end
 
 function File:getSize()
-	if self._size then return self._size end
 	-- NOTE: The correct way to do this would be a stat() call, which requires a
 	-- lot more (system-specific) code. This is a shortcut that requires the file
 	-- to be readable.
 	local mustOpen = not self:isOpen()
-	if mustOpen and not self:open('r') then
-		return 0
-	end
+	if mustOpen and not self:open('r') then return 0 end
 
 	local pos = mustOpen and 0 or self:tell()
 	C.fseek(self._handle, 0, 2)
-	self._size = tonumber(self:tell())
+	local size = self:tell()
 	if mustOpen then
 		self:close()
 	else
 		self:seek(pos)
 	end
-	return self._size;
+	return size;
 end
 
 function File:read(containerOrBytes, bytes)
-	if self._handle == nil or self._mode ~= 'r' then
-		return nil, 0
-	end
+	if self._mode ~= 'r' then return nil, 0 end
 
 	local container = bytes ~= nil and containerOrBytes or 'string'
 	if container ~= 'string' and container ~= 'data' then
@@ -101,22 +96,14 @@ function File:read(containerOrBytes, bytes)
 	local data = love.data.newByteData(bytes)
 	local r = tonumber(C.fread(data:getFFIPointer(), 1, bytes, self._handle))
 
-	if container == 'string' then
-		local str = data:getString()
-		data:release()
-		data = str
-	else
-		local fd = love.filesystem.newFileData(data:getString(), self._name)
-		data:release()
-		data = fd
-	end
+	local str = data:getString()
+	data:release()
+	data = container == 'data' and love.filesystem.newFileData(str, self._name) or str
 	return data, r
 end
 
 function File:lines()
-	if self._mode ~= 'r' then
-		error("File is not opened for reading")
-	end
+	if self._mode ~= 'r' then error("File is not opened for reading") end
 
 	local BUFFERSIZE = 4096
 	local buffer = ffi.new('unsigned char[?]', BUFFERSIZE)
@@ -127,7 +114,7 @@ function File:lines()
 	return function()
 		self:seek(offset)
 		local line = {}
-		while true do
+		while bytesRead > 0 do
 			for i = bufferPos, bytesRead - 1 do
 				if buffer[i] ~= 10 and buffer[i] ~= 13 then
 					table.insert(line, string.char(buffer[i]))
@@ -138,12 +125,9 @@ function File:lines()
 			end
 
 			bytesRead = tonumber(C.fread(buffer, 1, BUFFERSIZE, self._handle))
-			if bytesRead == 0 then break end
 			offset, bufferPos = offset + bytesRead, 0
 		end
-		if #line > 0 then
-			return table.concat(line)
-		end
+		return line[1] and table.concat(line) or nil
 	end
 end
 
@@ -162,7 +146,6 @@ function File:write(data, size)
 	if tonumber(C.fwrite(toWrite, 1, writeSize, self._handle)) ~= writeSize then
 		return false, "Could not write data"
 	end
-	self._size = (self._size or 0) + writeSize
 	return true
 end
 
@@ -238,9 +221,8 @@ function nativefs.read(containerOrName, nameOrSize, sizeOrNil)
 	end
 
 	local file = nativefs.newFile(name)
-	if not file:open('r') then
-		return nil, "Could not open file for reading: " .. name
-	end
+	local ok, err = file:open('r')
+	if not ok then return nil, err end
 
 	local data, size = file:read(container, size)
 	file:close()
@@ -249,11 +231,10 @@ end
 
 local function writeFile(mode, name, data, size)
 	local file = nativefs.newFile(name)
-	if not file:open(mode) then
-		return nil, "Could not open file for writing: " .. name
-	end
+	local ok, err = file:open(mode)
+	if not ok then return nil, err end
 
-	local ok, err = file:write(data, size or 'all')
+	ok, err = file:write(data, size or 'all')
 	file:close()
 	return ok, err
 end
@@ -289,18 +270,13 @@ function nativefs.setWorkingDirectory(path)
 end
 
 function nativefs.getDriveList()
-	if ffi.os ~= 'Windows' then
-		return { '/' }
-	end
-
-	local drives = {}
-	local bits = C.GetLogicalDrives()
+	if ffi.os ~= 'Windows' then return { '/' } end
+	local drives, bits = {}, C.GetLogicalDrives()
 	for i = 0, 25 do
 		if bit.band(bits, 2 ^ i) > 0 then
 			table.insert(drives, string.char(65 + i) .. ':/')
 		end
 	end
-
 	return drives
 end
 
@@ -334,9 +310,9 @@ local function withTempMount(dir, fn)
 	return a, b
 end
 
-function nativefs.getDirectoryItems(dir, callback)
+function nativefs.getDirectoryItems(dir)
 	local result, err = withTempMount(dir, function(mount)
-		return love.filesystem.getDirectoryItems(mount, callback)
+		return love.filesystem.getDirectoryItems(mount)
 	end)
 	return result or {}
 end
