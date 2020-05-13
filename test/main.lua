@@ -138,6 +138,24 @@ function test_fs_getDirectoryItems()
 	equals(#fs.getDirectoryItems('does_not_exist'), 0)
 end
 
+function test_fs_getDirectoryItemsInfo()
+	local items, map = fs.getDirectoryItems('data'), {}
+	for i = 1, #items do map[items[i]] = true end
+	local itemsEx, mapEx = fs.getDirectoryItemsInfo('data'), {}
+	for i = 1, #itemsEx do mapEx[itemsEx[i].name] = itemsEx[i] end
+
+	equals(#items, #itemsEx)
+	for i = 1, #itemsEx do
+		local item = itemsEx[i]
+		equals(map[item.name], true)
+		local info = love.filesystem.getInfo('data/' .. item.name)
+		equals(info.type, item.type)
+		equals(info.size, item.size)
+		equals(info.modtime, item.modtime)
+	end
+	equals(#fs.getDirectoryItemsInfo('does_not_exist'), 0)
+end
+
 function test_fs_setWorkingDirectory()
 	local wd = fs.getWorkingDirectory()
 

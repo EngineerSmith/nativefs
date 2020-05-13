@@ -317,6 +317,23 @@ function nativefs.getDirectoryItems(dir)
 	return result or {}
 end
 
+function nativefs.getDirectoryItemsInfo(path, filtertype)
+	local result, err = withTempMount(path, function(mount)
+		local items = {}
+		local files = love.filesystem.getDirectoryItems(mount)
+		for i = 1, #files do
+			local filepath = string.format('%s/%s', mount, files[i])
+			local info = love.filesystem.getInfo(filepath, filtertype)
+			if info then
+				info.name = files[i]
+				table.insert(items, info)
+			end
+		end
+		return items
+	end)
+	return result or {}
+end
+
 function nativefs.getInfo(path, filtertype)
 	local dir = path:match("(.*[\\/]).*$") or './'
 	local file = love.path.leaf(path)

@@ -6,6 +6,8 @@ nativefs replicates a subset of the [love.filesystem](https://love2d.org/wiki/lo
 
 ### nativefs
 
+Link in this list point to their `love.filesystem` counterparts. All functions are designed to behave the same way as `love.filesystem`, but without the path restrictions that LÖVE imposes; i.e., they allow full access to the filesystem.
+
 * [nativefs.newFile](https://love2d.org/wiki/love.filesystem.newFile)
 * [nativefs.newFileData](https://love2d.org/wiki/love.filesystem.newFileData)
 * [nativefs.mount](https://love2d.org/wiki/love.filesystem.mount)
@@ -20,15 +22,21 @@ nativefs replicates a subset of the [love.filesystem](https://love2d.org/wiki/lo
 * [nativefs.getInfo](https://love2d.org/wiki/love.filesystem.getInfo)
 * [nativefs.createDirectory](https://love2d.org/wiki/love.filesystem.createDirectory)
 * [nativefs.remove](https://love2d.org/wiki/love.filesystem.remove)
+* nativefs.getDirectoryItemsInfo
+* nativefs.getDriveList
+* nativefs.setWorkingDirectory
 
-Function names in this list are links to their `love.filesystem` counterparts. All functions are designed to behave the same way as `love.filesystem`, but without the path restrictions that LÖVE imposes; i.e., they allow full access to the filesystem.
+#### Additional `nativefs` functions
 
-Additional functions that are not available in `love.filesystem`:
+Functions that are not available in `love.filesystem`:
 
-* `nativefs.getDriveList`  
+* `nativefs.getDirectoryItemsInfo(path)`  
+Returns a list of items in a directory that contains not only the names, but also the information returned by `getInfo` for each item. The return value is a list of files, in which each entry is a table as returned by [getInfo](https://love2d.org/wiki/love.filesystem.getInfo), with an additional `name` field for each file.
+
+* `nativefs.getDriveList()`  
 Returns a table of all populated drive letters on Windows (`{ 'C:/', 'D:/', ...}`). On systems that don't use drive letters, a table with the single entry `/` is returned.
 
-* `nativefs.setWorkingDirectory`  
+* `nativefs.setWorkingDirectory(directory)`  
 Changes the working directory.
 
 ### File
@@ -60,9 +68,11 @@ Function names in this list are links to their LÖVE `File` counterparts. `File`
 local nativefs = require("nativefs")
 
 -- deletes all files in C:\Windows
-local files = nativefs.getDirectoryItems("C:/Windows")
+local files = nativefs.getDirectoryItemsInfo("C:/Windows")
 for i = 1, #files do
-  nativefs.remove("C:/Windows/" .. files[i])
+  if files[i].type == "file" then
+    nativefs.remove("C:/Windows/" .. files[i].name)
+  end
 end
 ```
 ## License
