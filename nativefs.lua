@@ -11,6 +11,7 @@ local File = {
 
 local fopen, getcwd, chdir, unlink, mkdir, rmdir
 local BUFFERMODE, MODEMAP
+local ByteArray = ffi.typeof('unsigned char[?]')
 
 function File:open(mode)
 	if self._mode ~= 'c' then return false, "File " .. self._name .. " is already open" end
@@ -106,27 +107,31 @@ function File:lines()
 	if self._mode ~= 'r' then error("File is not opened for reading") end
 
 	local BUFFERSIZE = 4096
-	local buffer = ffi.new('unsigned char[?]', BUFFERSIZE)
+	local buffer = ByteArray(BUFFERSIZE)
 	local bytesRead = tonumber(C.fread(buffer, 1, BUFFERSIZE, self._handle))
 
 	local bufferPos = 0
 	local offset = self:tell()
 	return function()
-		self:seek(offset)
 		local line = {}
+		self:seek(offset)
+
 		while bytesRead > 0 do
 			for i = bufferPos, bytesRead - 1 do
-				if buffer[i] ~= 10 and buffer[i] ~= 13 then
-					table.insert(line, string.char(buffer[i]))
-				elseif buffer[i] == 10 then
+				if buffer[i] == 10 then -- end of line
 					bufferPos = i + 1
 					return table.concat(line)
+				end
+
+				if buffer[i] ~= 13 then -- ignore CR
+					table.insert(line, string.char(buffer[i]))
 				end
 			end
 
 			bytesRead = tonumber(C.fread(buffer, 1, BUFFERSIZE, self._handle))
 			offset, bufferPos = offset + bytesRead, 0
 		end
+
 		return line[1] and table.concat(line) or nil
 	end
 end
@@ -135,6 +140,7 @@ function File:write(data, size)
 	if self._mode ~= 'w' and self._mode ~= 'a' then
 		return false, "File " .. self._name .. " not opened for writing"
 	end
+
 	local toWrite, writeSize
 	if type(data) == 'string' then
 		writeSize = (size == nil or size == 'all') and #data or size
@@ -143,6 +149,7 @@ function File:write(data, size)
 		writeSize = (size == nil or size == 'all') and data:getSize() or size
 		toWrite = data:getFFIPointer()
 	end
+
 	if tonumber(C.fwrite(toWrite, 1, writeSize, self._handle)) ~= writeSize then
 		return false, "Could not write data"
 	end
@@ -150,13 +157,12 @@ function File:write(data, size)
 end
 
 function File:seek(pos)
-	if self._handle == nil then return false end
-	return C.fseek(self._handle, pos, 0) == 0
+	return self._handle and C.fseek(self._handle, pos, 0) == 0
 end
 
 function File:tell()
-	if self._handle == nil then return -1 end
-	return tonumber(C.ftell(self._handle))
+	if self._handle == nil then return nil, "Invalid position" end
+	return self._handle and tonumber(C.ftell(self._handle)) or -1
 end
 
 function File:flush()
@@ -417,7 +423,7 @@ else
 	]])
 
 	local MAX_PATH = 4096
-	local nameBuffer = ffi.new('char[?]', MAX_PATH)
+	local nameBuffer = ByteArray(MAX_PATH)
 
 	fopen = C.fopen
 	unlink = function(path) return ffi.C.unlink(path) == 0 end

@@ -334,6 +334,8 @@ end
 
 function test_File_tell()
 	local f = fs.newFile(testFile1)
+	local ok, err = f:tell()
+	equals(ok, nil)
 	f:open('r')
 	f:read(172)
 	equals(f:tell(), 172)
