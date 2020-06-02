@@ -15,7 +15,7 @@ local function notFailed(ok, err)
 end
 
 local function hasFailed(expected, ok, err)
-	equals(ok, false)
+	equals(ok or false, false)
 	if expected then
 		equals(err, expected)
 	end
@@ -334,8 +334,9 @@ end
 
 function test_File_tell()
 	local f = fs.newFile(testFile1)
-	local ok, err = f:tell()
-	equals(ok, nil)
+
+	hasFailed("Invalid position", f:tell())
+
 	f:open('r')
 	f:read(172)
 	equals(f:tell(), 172)
@@ -344,9 +345,13 @@ end
 
 function test_File_flush()
 	local f = fs.newFile('data/write.test')
+
+	hasFailed("File is not opened for writing", f:flush())
+
 	f:open('w')
 	f:write('hello')
 	notFailed(f:flush())
+
 	f:close()
 end
 

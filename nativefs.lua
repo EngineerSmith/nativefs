@@ -5,20 +5,20 @@ local File = {
 	getBuffer = function(self) return self._bufferMode, self._bufferSize end,
 	getFilename = function(self) return self._name end,
 	getMode = function(self) return self._mode end,
-	isEOF = function(self) return not self:isOpen() or C.feof(self._handle) ~= 0 or self:tell() == self:getSize() end,
 	isOpen = function(self) return self._mode ~= 'c' and self._handle ~= nil end,
 }
 
 local fopen, getcwd, chdir, unlink, mkdir, rmdir
 local BUFFERMODE, MODEMAP
 local ByteArray = ffi.typeof('unsigned char[?]')
+local function _ptr(p) return p ~= nil and p or nil end
 
 function File:open(mode)
 	if self._mode ~= 'c' then return false, "File " .. self._name .. " is already open" end
 	if not MODEMAP[mode] then return false, "Invalid open mode for " .. self._name .. ": " .. mode end
 
-	local handle = fopen(self._name, MODEMAP[mode])
-	if handle == nil then return false, "Could not open " .. self._name .. " in mode " .. mode end
+	local handle = _ptr(fopen(self._name, MODEMAP[mode]))
+	if not handle then return false, "Could not open " .. self._name .. " in mode " .. mode end
 
 	if C.setvbuf(handle, nil, BUFFERMODE[self._bufferMode], self._bufferSize) ~= 0 then
 		self._bufferMode, self._bufferSize = 'none', 0
@@ -161,19 +161,23 @@ function File:seek(pos)
 end
 
 function File:tell()
-	if self._handle == nil then return nil, "Invalid position" end
-	return self._handle and tonumber(C.ftell(self._handle)) or -1
+	if not self._handle then return nil, "Invalid position" end
+	return tonumber(C.ftell(self._handle))
 end
 
 function File:flush()
-	if self._handle == nil then return false, "File is not open" end
+	if self._mode ~= 'w' and self._mode ~= 'a' then
+		return nil, "File is not opened for writing"
+	end
 	return C.fflush(self._handle) == 0
 end
 
+function File:isEOF()
+	return not self:isOpen() or C.feof(self._handle) ~= 0 or self:tell() == self:getSize()
+end
+
 function File:release()
-	if self._mode ~= 'c' then
-		self:close()
-	end
+	if self._mode ~= 'c' then self:close() end
 	self._handle = nil
 end
 
@@ -308,8 +312,8 @@ function nativefs.remove(name)
 end
 
 local function withTempMount(dir, fn)
-	local mountPoint = loveC.PHYSFS_getMountPoint(dir)
-	if mountPoint ~= nil then return fn(ffi.string(mountPoint)) end
+	local mountPoint = _ptr(loveC.PHYSFS_getMountPoint(dir))
+	if mountPoint then return fn(ffi.string(mountPoint)) end
 	if not nativefs.mount(dir, '__nativefs__temp__') then return false, "Could not mount " .. dir end
 	local a, b = fn('__nativefs__temp__')
 	nativefs.unmount(dir)
@@ -432,8 +436,8 @@ else
 	rmdir = function(path) return ffi.C.rmdir(path) == 0 end
 
 	getcwd = function()
-		local cwd = C.getcwd(nameBuffer, MAX_PATH)
-		return cwd ~= nil and ffi.string(cwd) or nil
+		local cwd = _ptr(C.getcwd(nameBuffer, MAX_PATH))
+		return cwd and ffi.string(cwd) or nil
 	end
 end
 
