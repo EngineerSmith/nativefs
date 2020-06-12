@@ -41,17 +41,13 @@ function File:setBuffer(mode, size)
 		return false, "Invalid buffer mode " .. mode .. " (expected 'none', 'full', or 'line')"
 	end
 
-	if mode == 'line' or mode == 'full' then
-		size = math.max(2, size or 2) -- Windows requires buffer to be at least 2 bytes
-	else
+	if mode == 'none' then
 		size = math.max(0, size or 0)
-	end
-	if self._mode == 'c' then
-		self._bufferMode, self._bufferSize = mode, size
-		return true
+	else
+		size = math.max(2, size or 2) -- Windows requires buffer to be at least 2 bytes
 	end
 
-	local success = C.setvbuf(self._handle, nil, bufferMode, size) == 0
+	local success = self._mode == 'c' or C.setvbuf(self._handle, nil, bufferMode, size) == 0
 	if success then
 		self._bufferMode, self._bufferSize = mode, size
 		return true
@@ -75,7 +71,7 @@ function File:getSize()
 	else
 		self:seek(pos)
 	end
-	return size;
+	return size
 end
 
 function File:read(containerOrBytes, bytes)
@@ -180,6 +176,10 @@ function File:release()
 	if self._mode ~= 'c' then self:close() end
 	self._handle = nil
 end
+
+function File:type() return 'File' end
+
+function File:typeOf(t) return t == 'File' end
 
 File.__index = File
 

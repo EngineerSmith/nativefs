@@ -29,6 +29,10 @@ local testFile2, testSize2 = 'data/𠆢ßЩ.txt', 450
 function test_fs_newFile()
 	local file = fs.newFile('test.file')
 	notEquals(file, nil)
+	equals(file:type(), 'File')
+	equals(file:typeOf('File'), true)
+	equals(file:getMode(), 'c')
+	equals(file:isEOF(), true)
 	equals(file:getFilename(), 'test.file')
 end
 
