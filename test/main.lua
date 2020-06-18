@@ -137,14 +137,24 @@ function test_fs_getDirectoryItems()
 
 	for i = 1, #items2 do
 		equals(map[items2[i]], map2[items2[i]])
+		equals(fs.getInfo('data/' .. items2[i]), love.filesystem.getInfo('data/' .. items2[i]))
 	end
 
 	equals(#fs.getDirectoryItems('does_not_exist'), 0)
 end
 
 function test_fs_getDirectoryItemsInfo()
-	local items, map = fs.getDirectoryItems('data'), {}
-	for i = 1, #items do map[items[i]] = true end
+	local files = fs.getDirectoryItems('data')
+	local items, map = {}, {}
+	for i = 1, #files do
+		local info = fs.getInfo('data/' .. files[i])
+		if info then
+			info.name = files[i]
+			table.insert(items, info)
+		end
+	end
+
+	for i = 1, #items do map[items[i].name] = true end
 	local itemsEx, mapEx = fs.getDirectoryItemsInfo('data'), {}
 	for i = 1, #itemsEx do mapEx[itemsEx[i].name] = itemsEx[i] end
 
@@ -202,6 +212,12 @@ function test_fs_getInfo()
 	notEquals(info, nil)
 	equals(info.type, 'file')
 	equals(info.size, testSize1)
+	notEquals(info.modtime, nil)
+
+	local info = fs.getInfo(testFile2)
+	notEquals(info, nil)
+	equals(info.type, 'file')
+	equals(info.size, testSize2)
 	notEquals(info.modtime, nil)
 end
 

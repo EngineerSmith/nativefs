@@ -11,7 +11,7 @@ local File = {
 local fopen, getcwd, chdir, unlink, mkdir, rmdir
 local BUFFERMODE, MODEMAP
 local ByteArray = ffi.typeof('unsigned char[?]')
-local function _ptr(p) return p ~= nil and p or nil end
+local function _ptr(p) return p ~= nil and p or nil end -- NULL pointer to nil
 
 function File:open(mode)
 	if self._mode ~= 'c' then return false, "File " .. self._name .. " is already open" end
@@ -20,11 +20,9 @@ function File:open(mode)
 	local handle = _ptr(fopen(self._name, MODEMAP[mode]))
 	if not handle then return false, "Could not open " .. self._name .. " in mode " .. mode end
 
-	if C.setvbuf(handle, nil, BUFFERMODE[self._bufferMode], self._bufferSize) ~= 0 then
-		self._bufferMode, self._bufferSize = 'none', 0
-	end
-
 	self._handle, self._mode = ffi.gc(handle, C.fclose), mode
+	self:setBuffer(self._bufferMode, self._bufferSize)
+
 	return true
 end
 
@@ -48,12 +46,13 @@ function File:setBuffer(mode, size)
 	end
 
 	local success = self._mode == 'c' or C.setvbuf(self._handle, nil, bufferMode, size) == 0
-	if success then
-		self._bufferMode, self._bufferSize = mode, size
-		return true
+	if not success then
+		self._bufferMode, self._bufferSize = 'none', 0
+		return false, "Could not set buffer mode"
 	end
 
-	return false, "Could not set buffer mode"
+	self._bufferMode, self._bufferSize = mode, size
+	return true
 end
 
 function File:getSize()
@@ -311,52 +310,55 @@ function nativefs.remove(name)
 	return true
 end
 
-local function withTempMount(dir, fn)
+local function withTempMount(dir, fn, ...)
 	local mountPoint = _ptr(loveC.PHYSFS_getMountPoint(dir))
-	if mountPoint then return fn(ffi.string(mountPoint)) end
+	if mountPoint then return fn(ffi.string(mountPoint), ...) end
 	if not nativefs.mount(dir, '__nativefs__temp__') then return false, "Could not mount " .. dir end
-	local a, b = fn('__nativefs__temp__')
+	local a, b = fn('__nativefs__temp__', ...)
 	nativefs.unmount(dir)
 	return a, b
 end
 
 function nativefs.getDirectoryItems(dir)
-	local result, err = withTempMount(dir, function(mount)
-		return love.filesystem.getDirectoryItems(mount)
-	end)
+	local result, err = withTempMount(dir, love.filesystem.getDirectoryItems)
 	return result or {}
 end
 
-function nativefs.getDirectoryItemsInfo(path, filtertype)
-	local result, err = withTempMount(path, function(mount)
-		local items = {}
-		local files = love.filesystem.getDirectoryItems(mount)
-		for i = 1, #files do
-			local filepath = string.format('%s/%s', mount, files[i])
-			local info = love.filesystem.getInfo(filepath, filtertype)
-			if info then
-				info.name = files[i]
-				table.insert(items, info)
-			end
+local function getDirectoryItemsInfo(path, filtertype)
+	local items = {}
+	local files = love.filesystem.getDirectoryItems(path)
+	for i = 1, #files do
+		local filepath = string.format('%s/%s', path, files[i])
+		local info = love.filesystem.getInfo(filepath, filtertype)
+		if info then
+			info.name = files[i]
+			table.insert(items, info)
 		end
-		return items
-	end)
+	end
+	return items
+end
+
+function nativefs.getDirectoryItemsInfo(path, filtertype)
+	local result, err = withTempMount(path, getDirectoryItemsInfo, filtertype)
 	return result or {}
+end
+
+local function getInfo(path, file, filtertype)
+	local filepath = string.format('%s/%s', path, file)
+	return love.filesystem.getInfo(filepath, filtertype)
 end
 
 function nativefs.getInfo(path, filtertype)
 	local dir = path:match("(.*[\\/]).*$") or './'
 	local file = love.path.leaf(path)
-	local result, err = withTempMount(dir, function(mount)
-		local filepath = string.format('%s/%s', mount, file)
-		return love.filesystem.getInfo(filepath, filtertype)
-	end)
+	local result, err = withTempMount(dir, getInfo, file, filtertype)
 	return result or nil
 end
 
 -----------------------------------------------------------------------------
 
 MODEMAP = { r = 'rb', w = 'wb', a = 'ab' }
+local MAX_PATH = 4096
 
 ffi.cdef([[
 	int PHYSFS_mount(const char* dir, const char* mountPoint, int appendToPath);
@@ -406,7 +408,6 @@ if ffi.os == 'Windows' then
 		return ffi.string(buf)
 	end
 
-	local MAX_PATH = 260
 	local nameBuffer = ffi.new('wchar_t[?]', MAX_PATH + 1)
 
 	fopen = function(path, mode) return C._wfopen(towidestring(path), towidestring(mode)) end
@@ -426,7 +427,6 @@ else
 		int rmdir(const char* path);
 	]])
 
-	local MAX_PATH = 4096
 	local nameBuffer = ByteArray(MAX_PATH)
 
 	fopen = C.fopen
