@@ -34,7 +34,7 @@ Functions that are not available in `love.filesystem`:
 Returns a list of items in a directory that contains not only the names, but also the information returned by `getInfo` for each item. The return value is a list of files and directories, in which each entry is a table as returned by [getInfo](https://love2d.org/wiki/love.filesystem.getInfo), with an additional `name` field for each entry.
 
 * `nativefs.getDriveList()`  
-Returns a table of all populated drive letters on Windows (`{ 'C:/', 'D:/', ...}`). On systems that don't use drive letters, a table with the single entry `/` is returned.
+Returns a table with all populated drive letters on Windows (`{ 'C:/', 'D:/', ...}`). On systems that don't use drive letters, a table with the single entry `/` is returned.
 
 * `nativefs.setWorkingDirectory(directory)`  
 Changes the working directory.
@@ -62,7 +62,7 @@ Changes the working directory.
 * [File:typeOf](https://love2d.org/wiki/Object:typeOf)
 * [File:release](https://love2d.org/wiki/Object:release)
 
-Function names in this list are links to their LÖVE `File` counterparts. `File` is designed to work the same way as LÖVE's `File` class.
+Function names in this list are links to their LÖVE `File` counterparts. `File` is designed to work the same way as LÖVE's `File` objects.
 
 ## Example
 
