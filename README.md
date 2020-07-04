@@ -6,7 +6,7 @@ nativefs replicates a subset of the [love.filesystem](https://love2d.org/wiki/lo
 
 ### nativefs
 
-Link in this list point to their `love.filesystem` counterparts. All functions are designed to behave the same way as `love.filesystem`, but without the path restrictions that LÖVE imposes; i.e., they allow full access to the filesystem.
+Links in this list point to their `love.filesystem` counterparts. All functions are designed to behave the same way as `love.filesystem`, but without the path restrictions that LÖVE imposes; i.e., they allow full access to the filesystem.
 
 * [nativefs.newFile](https://love2d.org/wiki/love.filesystem.newFile)
 * [nativefs.newFileData](https://love2d.org/wiki/love.filesystem.newFileData)
@@ -31,7 +31,7 @@ Link in this list point to their `love.filesystem` counterparts. All functions a
 Functions that are not available in `love.filesystem`:
 
 * `nativefs.getDirectoryItemsInfo(path)`  
-Returns a list of items in a directory that contains not only the names, but also the information returned by `getInfo` for each item. The return value is a list of files and directories, in which each entry is a table as returned by [getInfo](https://love2d.org/wiki/love.filesystem.getInfo), with an additional `name` field for each entry.
+Returns a list of items in a directory that contains not only the names, but also the information returned by `getInfo` for each item. The return value is a list of files and directories, in which each entry is a table as returned by [getInfo](https://love2d.org/wiki/love.filesystem.getInfo), with an additional `name` field for each entry. Using this function is faster than calling `getInfo` separately for each item.
 
 * `nativefs.getDriveList()`  
 Returns a table with all populated drive letters on Windows (`{ 'C:/', 'D:/', ...}`). On systems that don't use drive letters, a table with the single entry `/` is returned.
