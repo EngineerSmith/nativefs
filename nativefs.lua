@@ -292,7 +292,7 @@ end
 function nativefs.createDirectory(path)
 	local current = ''
 	for dir in path:gmatch('[^/\\]+') do
-		current = (current == '' and current or current .. '/') .. dir
+		current = current .. dir .. '/'
 		local info = nativefs.getInfo(current, 'directory')
 		if not info and not mkdir(current) then return false, "Could not create directory " .. current end
 	end
