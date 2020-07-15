@@ -348,9 +348,21 @@ local function getInfo(path, file, filtertype)
 	return love.filesystem.getInfo(filepath, filtertype)
 end
 
+local function leaf(p)
+	p = p:gsub('\\', '/')
+	local last, a = p, 1
+	while a do
+		a = p:find('/', a + 1)
+		if a then
+			last = p:sub(a + 1)
+		end
+	end
+	return last
+end
+
 function nativefs.getInfo(path, filtertype)
 	local dir = path:match("(.*[\\/]).*$") or './'
-	local file = love.path.leaf(path)
+	local file = leaf(path)
 	local result, err = withTempMount(dir, getInfo, file, filtertype)
 	return result or nil
 end
