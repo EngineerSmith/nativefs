@@ -228,6 +228,10 @@ function test_fs_createDirectory()
 	fs.remove('data/a/b/c')
 	fs.remove('data/a/b')
 	fs.remove('data/a')
+
+	local d = fs.getWorkingDirectory() .. '/data/a'
+	notFailed(fs.createDirectory(d))
+	fs.remove(d)
 end
 
 function test_fs_remove()
