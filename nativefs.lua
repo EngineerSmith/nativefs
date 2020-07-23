@@ -120,19 +120,16 @@ function File:read(containerOrBytes, bytes)
 	return data, r
 end
 
-function File:lines()
-	if self._mode ~= 'r' then error("File is not opened for reading") end
-
+local function lines(file, autoclose)
 	local BUFFERSIZE = 4096
-	local buffer = ByteArray(BUFFERSIZE)
-	local bytesRead = tonumber(C.fread(buffer, 1, BUFFERSIZE, self._handle))
+	local buffer, bufferPos = ByteArray(BUFFERSIZE), 0
+	local bytesRead = tonumber(C.fread(buffer, 1, BUFFERSIZE, file._handle))
 
-	local bufferPos = 0
-	local offset = self:tell()
+	local offset = file:tell()
 	return function()
-		local line = {}
-		self:seek(offset)
+		file:seek(offset)
 
+		local line = {}
 		while bytesRead > 0 do
 			for i = bufferPos, bytesRead - 1 do
 				if buffer[i] == 10 then -- end of line
@@ -145,12 +142,21 @@ function File:lines()
 				end
 			end
 
-			bytesRead = tonumber(C.fread(buffer, 1, BUFFERSIZE, self._handle))
+			bytesRead = tonumber(C.fread(buffer, 1, BUFFERSIZE, file._handle))
 			offset, bufferPos = offset + bytesRead, 0
 		end
 
-		return line[1] and table.concat(line) or nil
+		if not line[1] then
+			if autoclose then file:close() end
+			return nil
+		end
+		return table.concat(line)
 	end
+end
+
+function File:lines()
+	if self._mode ~= 'r' then error("File is not opened for reading") end
+	return lines(self)
 end
 
 function File:write(data, size)
@@ -282,7 +288,7 @@ function nativefs.lines(name)
 	local f = nativefs.newFile(name)
 	local ok, err = f:open('r')
 	if not ok then return nil, err end
-	return f:lines()
+	return lines(f, true)
 end
 
 function nativefs.load(name)
