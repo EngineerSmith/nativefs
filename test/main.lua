@@ -223,6 +223,7 @@ end
 
 function test_fs_createDirectory()
 	notFailed(fs.createDirectory('data/a/b/c/defg/h'))
+	notEquals(fs.getInfo('data/a/b/c/defg/h'), nil)
 	fs.remove('data/a/b/c/defg/h')
 	fs.remove('data/a/b/c/defg')
 	fs.remove('data/a/b/c')
@@ -231,6 +232,7 @@ function test_fs_createDirectory()
 
 	local d = fs.getWorkingDirectory() .. '/data/a'
 	notFailed(fs.createDirectory(d))
+	notEquals(fs.getInfo(d), nil)
 	fs.remove(d)
 end
 

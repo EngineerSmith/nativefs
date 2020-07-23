@@ -318,7 +318,7 @@ function nativefs.getDriveList()
 end
 
 function nativefs.createDirectory(path)
-	local current = ''
+	local current = path:sub(1, 1) == '/' and '/' or ''
 	for dir in path:gmatch('[^/\\]+') do
 		current = current .. dir .. '/'
 		local info = nativefs.getInfo(current, 'directory')
