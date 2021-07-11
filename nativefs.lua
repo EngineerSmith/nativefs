@@ -216,6 +216,9 @@ local nativefs = {}
 local loveC = ffi.os == 'Windows' and ffi.load('love') or C
 
 function nativefs.newFile(name)
+	if type(name) ~= 'string' then
+		error("bad argument #1 to 'newFile' (string expected, got " .. type(name) .. ")")
+	end
 	return setmetatable({
 		_name = name,
 		_mode = 'c',

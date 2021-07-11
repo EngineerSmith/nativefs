@@ -7,6 +7,7 @@ local fs
 
 local equals, notEquals = lu.assertEquals, lu.assertNotEquals
 local contains = lu.assertStrContains
+local errorContains = lu.assertErrorMsgContains
 
 local function notFailed(ok, err)
 	equals(ok, true)
@@ -27,6 +28,11 @@ local testFile1, testSize1 = 'data/ümläüt.txt', 446
 local testFile2, testSize2 = 'data/𠆢ßЩ.txt', 450
 
 function test_fs_newFile()
+	errorContains('bad argument', fs.newFile)
+	for _, v in ipairs({ 1, true, false, function() end, {} }) do
+		errorContains(type(v), fs.newFile, v)
+	end
+
 	local file = fs.newFile('test.file')
 	notEquals(file, nil)
 	equals(file:type(), 'File')
