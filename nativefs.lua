@@ -23,17 +23,17 @@ SOFTWARE.
 local ffi, bit = require('ffi'), require('bit')
 local C = ffi.C
 
+local fopen, getcwd, chdir, unlink, mkdir, rmdir
+local BUFFERMODE, MODEMAP
+local ByteArray = ffi.typeof('unsigned char[?]')
+local function _ptr(p) return p ~= nil and p or nil end -- NULL pointer to nil
+
 local File = {
 	getBuffer = function(self) return self._bufferMode, self._bufferSize end,
 	getFilename = function(self) return self._name end,
 	getMode = function(self) return self._mode end,
 	isOpen = function(self) return self._mode ~= 'c' and self._handle ~= nil end,
 }
-
-local fopen, getcwd, chdir, unlink, mkdir, rmdir
-local BUFFERMODE, MODEMAP
-local ByteArray = ffi.typeof('unsigned char[?]')
-local function _ptr(p) return p ~= nil and p or nil end -- NULL pointer to nil
 
 function File:open(mode)
 	if self._mode ~= 'c' then return false, "File " .. self._name .. " is already open" end
@@ -113,6 +113,12 @@ function File:read(containerOrBytes, bytes)
 
 	local data = love.data.newByteData(bytes)
 	local r = tonumber(C.fread(data:getFFIPointer(), 1, bytes, self._handle))
+
+	if container == 'data' then
+		-- FileData from ByteData requires LÖVE 11.4+
+		local ok, fd = pcall(love.filesystem.newFileData, data, self._name)
+		if ok then return fd end
+	end
 
 	local str = data:getString()
 	data:release()
