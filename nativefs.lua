@@ -392,6 +392,9 @@ local function leaf(p)
 end
 
 function nativefs.getInfo(path, filtertype)
+	if type(path) ~= 'string' then
+		error("bad argument #1 to 'getInfo' (string expected, got " .. type(path) .. ")")
+	end
 	local dir = path:match("(.*[\\/]).*$") or './'
 	local file = leaf(path)
 	local result, err = withTempMount(dir, getInfo, file, filtertype)
