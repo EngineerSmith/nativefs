@@ -351,6 +351,9 @@ local function withTempMount(dir, fn, ...)
 end
 
 function nativefs.getDirectoryItems(dir)
+	if type(dir) ~= "string" then
+		error("bad argument #1 to 'getDirectoryItems' (string expected, got " .. type(dir) .. ")")
+	end
 	local result, err = withTempMount(dir, love.filesystem.getDirectoryItems)
 	return result or {}
 end
@@ -370,6 +373,9 @@ local function getDirectoryItemsInfo(path, filtertype)
 end
 
 function nativefs.getDirectoryItemsInfo(path, filtertype)
+	if type(path) ~= "string" then
+		error("bad argument #1 to 'getDirectoryItemsInfo' (string expected, got " .. type(path) .. ")")
+	end
 	local result, err = withTempMount(path, getDirectoryItemsInfo, filtertype)
 	return result or {}
 end
@@ -392,6 +398,9 @@ local function leaf(p)
 end
 
 function nativefs.getInfo(path, filtertype)
+	if type(path) ~= 'string' then
+		error("bad argument #1 to 'getInfo' (string expected, got " .. type(path) .. ")")
+	end
 	local dir = path:match("(.*[\\/]).*$") or './'
 	local file = leaf(path)
 	local result, err = withTempMount(dir, getInfo, file, filtertype)
