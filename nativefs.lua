@@ -373,6 +373,9 @@ local function getDirectoryItemsInfo(path, filtertype)
 end
 
 function nativefs.getDirectoryItemsInfo(path, filtertype)
+	if type(path) ~= "string" then
+		error("bad argument #1 to 'getDirectoryItemsInfo' (string expected, got " .. type(path) .. ")")
+	end
 	local result, err = withTempMount(path, getDirectoryItemsInfo, filtertype)
 	return result or {}
 end
