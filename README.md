@@ -1,3 +1,5 @@
+This is a re-host as previously it was taken down by the original developer. Pull requests for fixes are welcome!
+
 # Native filesystem for LÖVE
 
 nativefs replicates a subset of the [love.filesystem](https://love2d.org/wiki/love.filesystem) API, but without LÖVE's path restrictions. 
@@ -69,11 +71,12 @@ Function names in this list are links to their LÖVE `File` counterparts. `File`
 ```lua
 local nativefs = require("nativefs")
 
--- deletes all files in C:\Windows
+-- Prints all information on files in C:\Windows
 local files = nativefs.getDirectoryItemsInfo("C:/Windows")
 for i = 1, #files do
   if files[i].type == "file" then
-    nativefs.remove("C:/Windows/" .. files[i].name)
+    local info = nativefs.getInfo("C:/Windows/" .. files[i].name)
+    print(i .. ": " .. files[i] .. " : Type:" .. info.type .. ", Size:" .. tostring(info.size) .. ", last modified:" .. tostring(info.modtime))
   end
 end
 ```
