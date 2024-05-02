@@ -117,7 +117,7 @@ function File:read(containerOrBytes, bytes)
 	if container == 'data' then
 		-- FileData from ByteData requires LÖVE 11.4+
 		local ok, fd = pcall(love.filesystem.newFileData, data, self._name)
-		if ok then return fd end
+		if ok then return fd, r end
 	end
 
 	local str = data:getString()
